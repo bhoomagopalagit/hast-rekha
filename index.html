@@ -2466,6 +2466,7 @@ async function downloadReading(r, btn, msgEl) {
     const bytes = await buildReportPdf(r);
     if (downloadsNs === undefined) downloadsNs = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
     const fname = `Palm reading - ${pdfClean(r.name).replace(/[^\w .-]/g, '') || 'reading'} - ${new Date().toISOString().slice(0, 10)}.pdf`;
+    if (window.AndroidSave) { window.AndroidSave.save(await blobToB64(new Blob([bytes], { type: 'application/pdf' })), fname, 'application/pdf'); done('Saved your reading to Downloads.'); return; }
     if (!downloadsNs) {
       const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })), link = document.createElement('a');
       link.href = url; link.download = fname; document.body.appendChild(link); link.click(); link.remove();
@@ -4265,7 +4266,10 @@ function htmlGoodDays(r) {
 }
 
 /* Share card: one image of the reading, ready for WhatsApp */
+/* In the Android app, files are handed to the app, which saves them to Downloads. */
+const blobToB64 = blob => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = rej; fr.readAsDataURL(blob); });
 async function saveBlob(fname, blob) {
+  if (window.AndroidSave) { window.AndroidSave.save(await blobToB64(blob), fname, blob.type || 'application/octet-stream'); return 'saved'; }
   if (downloadsNs === undefined) downloadsNs = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
   if (downloadsNs) return (await downloadsNs.save({ filename: fname, data: blob })).status;
   const url = URL.createObjectURL(blob), a = document.createElement('a');

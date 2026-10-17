@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+}
+
+def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+android {
+    namespace 'com.bhoomagopala.hastrekha'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.bhoomagopala.hastrekha'
+        minSdk 29
+        targetSdk 34
+        versionCode runNumber
+        versionName "1.${runNumber}"
+    }
+
+    // A fixed signing key so each new APK installs over the previous one.
+    // It is a public, debug-style key: fine for sharing the APK directly,
+    // but make a private key before publishing to the Play Store.
+    signingConfigs {
+        app {
+            storeFile file('app.keystore')
+            storePassword 'android'
+            keyAlias 'hastrekha'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.app
+        }
+        debug {
+            signingConfig signingConfigs.app
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
