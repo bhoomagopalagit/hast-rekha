@@ -1,0 +1,16 @@
+{
+  "name": "Hast Rekha Palm Reader",
+  "short_name": "Hast Rekha",
+  "description": "Palm reading with a real Vedic birth chart, panchang, dasha and Guna Milan.",
+  "start_url": "./#palm",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#13153a",
+  "theme_color": "#13153a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
