@@ -663,6 +663,12 @@ html.pc-open, html.pc-open body { overflow: hidden; }
 .src.ok { color: var(--life); border-color: color-mix(in srgb, var(--life) 50%, transparent); }
 .src.ok::before { content: "\2713\00a0"; }
 .src.est { color: var(--muted); }
+.pcbtns { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pcbtns .primary { font-size: 1.1rem; padding: 10px 16px; }
+.auto-card { border-color: var(--gold); }
+.src.auto { color: var(--head); border-color: color-mix(in srgb, var(--head) 50%, transparent); }
+.src.auto::before { content: "\25CE\00a0"; }
+
 .ai-card { border: 1px solid var(--gold-dim); border-radius: 10px; padding: 14px; display: grid; gap: 10px; background: color-mix(in srgb, var(--gold) 7%, var(--panel)); }
 .ai-card p { margin: 0; font-size: .95rem; }
 .ai-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -727,7 +733,7 @@ html.pc-open, html.pc-open body { overflow: hidden; }
   <header>
     <span class="eyebrow">Hast Rekha Shastra · palmistry and Vedic astrology</span>
     <h1>Hast Rekha Palm Reader</h1>
-    <p>Add your palm photo and birth details, then check your palm: trace your lines and match what you see to simple pictures, so the reading follows your real hand. Your birth chart, panchang and forecast use real planet positions.</p>
+    <p>Add your palm photo and birth details, then tap <b>Auto-read</b> to read your lines in one go, or check your palm yourself for the most exact reading. Your birth chart, panchang and forecast use real planet positions.</p>
   </header>
 
   <main>
@@ -820,7 +826,8 @@ html.pc-open, html.pc-open body { overflow: hidden; }
           <span class="label">Palm check</span>
           <p class="hint">Match your lines, mounts and fingers to simple pictures, and trace your lines on your photo. The reading then follows your real palm. About 3 minutes.</p>
           <div class="pcrow"><div class="pcmeter"><i id="pcFormBar" style="width:0"></i></div><span id="pcFormTxt">Not checked yet · the palm part is estimated</span></div>
-          <button type="button" class="ghost pcopen" id="pcFormBtn">Check my palm</button>
+          <div class="pcbtns"><button type="button" class="primary" id="autoFormBtn" hidden>&#10022; Auto-read my palm</button><button type="button" class="ghost pcopen" id="pcFormBtn">Check my palm</button></div>
+          <p class="hint" id="autoFormOut" aria-live="polite"></p>
         </div>
         <p class="err" id="err" role="alert"></p>
         <button class="primary" id="go" type="submit" disabled>Upload a photo to continue</button>
@@ -853,7 +860,7 @@ window.addEventListener('unhandledrejection', e => reportErr(e.reason && e.reaso
 const cv = $('#palm'), ctx = cv.getContext('2d');
 const W = 360, H = 460, OX = 22;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const state = { photo: null, hasPhoto: false, photoSig: '', mirror: true, geom: null, obs: {}, trace: {}, aiKeys: new Set(), askTurns: [], photoT: { k: 1, rot: 0, dx: 0, dy: 0, flip: false } };
+const state = { photo: null, hasPhoto: false, photoSig: '', mirror: true, geom: null, obs: {}, trace: {}, aiKeys: new Set(), autoKeys: new Set(), askTurns: [], photoT: { k: 1, rot: 0, dx: 0, dy: 0, flip: false } };
 
 function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 let C = {};
@@ -2161,7 +2168,7 @@ function htmlLines(r, lines) {
     ${r.hasGift('simian') ? '<p class="note">Your heart and head lines are fused into a single Simian line, a rare formation. Both readings below apply to that one line.</p>' : ''}
     <div class="lines">${lines.map(([l, t, p], i) => {
       const k = keys[i], marks = r.marks.filter(m => m.line === k);
-      return `<div class="line lcard"><span class="label">${l}${srcTag(r, k)}${r.trace && r.trace[k] ? ' <span class="src ok">traced</span>' : ''}</span><h4>${t}</h4><p>${p}</p>${htmlLineDeep(r, k)}
+      return `<div class="line lcard"><span class="label">${l}${srcTag(r, k)}${r.trace && r.trace[k] && !(r.pc.auto && r.pc.auto.has(k)) ? ' <span class="src ok">traced</span>' : ''}</span><h4>${t}</h4><p>${p}</p>${htmlLineDeep(r, k)}
         <ul class="ldet"><li><b>Depth</b> ${DEPTH[k][r.depth[k]]}${srcTag(r, k + '.depth')}</li><li><b>Shape</b> ${r.lineExtra[k]}${r.pc && r.pc.n ? (r.extraFrom && r.extraFrom.has(k) ? ' <span class="src ok">from your palm</span>' : ' <span class="src est">estimated</span>') : ''}</li>${marks.map(m => `<li><b>${MARK_NAMES[m.type]}</b> ${capFirst(m.text.replace(/^[^:]*:\s*/, ''))} <span class="agechip">age ${m.age}</span>${srcTag(r, 'marks')}</li>`).join('')}</ul></div>`;
     }).join('')}</div>
   </div>`;
@@ -2695,7 +2702,7 @@ function compose(name, dobStr, hand, time, place, obs = null, trace = {}) {
   r.children = pick(CHILDREN); r.health = pick(HEALTH); r.bracelets = pick(BRACELETS); r.intuition = pick(INTUITION);
   r.fingers = [['Index and ring fingers', pick(FINGER_IR)], ['Thumb · Angushtha', pick(THUMB)], ['Little finger', pick(LITTLE)], ['Fingertips', pick(TIPS)]];
   applyObsA(r, obs, { lifeA, lifeB, fateA, marryAge, moneyAge });
-  r.pc = pcStatus(obs); r.trace = fitTraces(trace);
+  r.pc = pcStatus(obs); r.pc.auto = real ? new Set([...state.autoKeys].filter(k => pcHas(obs, k))) : new Set(); r.trace = fitTraces(trace);
   const digits = dobStr.replace(/\D/g, '').split('').reduce((a, c) => a + +c, 0);
   const nameSum = (name || '').toLowerCase().split('').reduce((a, c) => a + (CHALDEAN[c] || 0), 0);
   r.num = { mulank: droot(d), bhagyank: droot(digits), name: nameSum ? droot(nameSum) : null };
@@ -3516,7 +3523,7 @@ function mountsFrom10(r) {
   r.mounts = MOUNTS.map(mt => ({ ...mt, s: S[mt.n === 'Mars' ? Math.max(lv('Lower Mars'), lv('Upper Mars')) : lv(mt.n)] }));
   r.top = [...r.mounts].sort((a, b) => b.s - a.s)[0];
 }
-const srcTag = (r, k) => !r.pc || !r.pc.n ? '' : r.pc.keys.has(k) ? ' <span class="src ok">from your palm</span>' : ' <span class="src est">estimated</span>';
+const srcTag = (r, k) => !r.pc || !r.pc.n ? '' : r.pc.auto && r.pc.auto.has(k) ? ' <span class="src auto">auto-read</span>' : r.pc.keys.has(k) ? ' <span class="src ok">from your palm</span>' : ' <span class="src est">estimated</span>';
 function htmlPcheck(r, sample) {
   const p = r.pc || { n: 0, total: PC_FEATURES.length };
   const pct = Math.round(p.n / p.total * 100);
@@ -3614,7 +3621,7 @@ function pcClose(read) {
   else { try { (pc.lastFocus || $('#go')).focus({ preventScroll: true }); } catch {} }
 }
 function pcSet(k, v) {
-  state.aiKeys.delete(k);
+  state.aiKeys.delete(k); state.autoKeys.delete(k);
   if (v === undefined) delete state.obs[k]; else state.obs[k] = v;
   pc.dirty = true;
 }
@@ -3632,6 +3639,7 @@ function pcRender() {
   let h = `<span class="eyebrow">${q.eb}</span><h2 id="pcTitle" tabindex="-1">${q.title}</h2>`;
   if (id === 'align') h += `<p class="pc-help">Let's read your real palm. Answer what you can see, and tap <b>Not sure</b> for anything you can't. It takes about 3 minutes.</p>`;
   if (id === 'align' && photoTip(state.photoQ)) h += `<p class="note">${photoTip(state.photoQ)}</p>`;
+  if (id === 'align' && state.photo) h += `<div class="ai-card auto-card"><p><b>&#10022; Don’t want to pick lines yourself?</b> Tap Auto-read. The app finds your hand, lines it up, reads your hand shape and your heart, head, life and fate lines from the photo, then shows your reading. It all happens on your phone.</p><div class="ai-row"><button type="button" class="primary" id="autoRead">Auto-read my palm</button></div><p class="hint" id="autoOut" aria-live="polite"></p></div>`;
   if (id === 'align') h += aiCardHTML();
   if (q.help) h += `<p class="pc-help">${q.help}</p>`;
   if (id === 'align') {
@@ -3677,7 +3685,7 @@ function pcGroupHTML(g, gi) {
     }
     return `<button type="button" class="pc-o" data-g="${gi}" data-i="${oi}" aria-pressed="${sel(o)}">${pic}<span class="pc-ot">${o.t}</span>${o.sub ? `<span class="pc-os">${o.sub}</span>` : ''}</button>`;
   };
-  const aiTag = state.aiKeys.has(g.key) ? ' <span class="src ai">Claude</span>' : '';
+  const aiTag = state.aiKeys.has(g.key) ? ' <span class="src ai">Claude</span>' : state.autoKeys.has(g.key) ? ' <span class="src auto">auto-read</span>' : '';
   if (g.type === 'seg') return `<fieldset class="pc-g"><legend class="pc-q">${g.q}${aiTag}</legend><div class="pc-seg">${g.opts.map((o, oi) => `<button type="button" data-g="${gi}" data-i="${oi}" aria-pressed="${sel(o)}">${o.ic || ''}<span>${o.t}</span></button>`).join('')}</div></fieldset>`;
   return `<fieldset class="pc-g"><legend class="pc-q">${g.q}${aiTag}</legend><div class="pc-opts${g.type === 'multi' ? ' multi' : ''}">${g.opts.map(card).join('')}</div>${g.type === 'multi' ? '<button type="button" class="linkish" id="pcNone">I can’t see any of these</button>' : ''}</fieldset>`;
 }
@@ -3742,6 +3750,8 @@ function pcBind(id) {
   body.querySelectorAll('[data-jump]').forEach(b => b.addEventListener('click', () => { pc.i = pc.steps.indexOf(b.dataset.jump); pcRender(); }));
   const quick = pcEl('pcQuick');
   if (quick) quick.addEventListener('click', () => pcClose(true));
+  const aur = pcEl('autoRead');
+  if (aur) aur.addEventListener('click', () => runAutoRead(aur, pcEl('autoOut'), () => pcClose(true)));
   const air = pcEl('aiRead');
   if (air) air.addEventListener('click', () => aiReadPhoto(air, pcEl('aiOut'), pcEl('aiStop')));
   if (id === 'align') {
@@ -3890,6 +3900,7 @@ pcEl('pc').addEventListener('keydown', e => {
 document.addEventListener('click', e => { const b = e.target.closest('.pcopen'); if (b) pcOpen(state.hasPhoto ? null : 'read', b.dataset.step); });
 
 function pcFormUpdate() {
+  const ab = pcEl('autoFormBtn'); if (ab) ab.hidden = !state.photo;
   const s = pcStatus(state.obs);
   const bar = pcEl('pcFormBar'); if (!bar) return;
   bar.style.width = `${Math.round(s.n / s.total * 100)}%`;
@@ -4513,7 +4524,298 @@ const OMEN_BY_LORD = {
   Saturn: 'Slow, steady effort now builds something that lasts.', Rahu: 'Try something new, but read the fine print first.', Ketu: 'Let go of what no longer fits. Quiet reflection shows the way.'
 };
 
+/* ================= AUTO-READ: find the hand, line it up and read the main lines, all on this device ================= */
+function autoRender(img, T, S) {
+  const c = document.createElement('canvas'); c.width = W * S; c.height = H * S;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.setTransform(S, 0, 0, S, 0, 0); x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
+  drawPhotoOn(x, img, T);
+  return x.getImageData(0, 0, c.width, c.height);
+}
+/* Skin pixels in YCrCb, tuned to the skin tone found in the middle of the frame. */
+function autoSkin(id, tol = 1) {
+  const { data, width: w, height: h } = id, n = w * h;
+  const Y = new Float32Array(n), cr = new Float32Array(n), cb = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+    Y[i] = .299 * r + .587 * g + .114 * b; cr[i] = 128 + .5 * r - .4187 * g - .0813 * b; cb[i] = 128 - .1687 * r - .3313 * g + .5 * b;
+  }
+  const a1 = [], a2 = [], st = Math.max(1, Math.round(w / 120));
+  for (let y = Math.floor(h * .3); y < h * .72; y += st) for (let x = Math.floor(w * .28); x < w * .72; x += st) {
+    const i = y * w + x;
+    if (Y[i] > 40 && cr[i] > 128 && cr[i] < 185 && cb[i] > 70 && cb[i] < 140) { a1.push(cr[i]); a2.push(cb[i]); }
+  }
+  const med = a => { a.sort((p, q) => p - q); return a[a.length >> 1]; };
+  const aY = [];
+  for (let y = Math.floor(h * .3); y < h * .72; y += st) for (let x = Math.floor(w * .28); x < w * .72; x += st) { const i = y * w + x; if (Y[i] > 40 && cr[i] > 128 && cr[i] < 185 && cb[i] > 70 && cb[i] < 140) aY.push(Y[i]); }
+  const adaptive = a1.length > 80, mcr = adaptive ? med(a1) : 150, mcb = adaptive ? med(a2) : 110, mY = aY.length ? med(aY) : 150;
+  const m = new Uint8Array(n), yTol = tol < 1 ? 70 * tol : 1e9;
+  for (let i = 0; i < n; i++) {
+    if (Y[i] < 28) continue;
+    if (adaptive) { const d1 = (cr[i] - mcr) / (16 * tol), d2 = (cb[i] - mcb) / (18 * tol), d3 = (Y[i] - mY) / yTol; if (d1 * d1 + d2 * d2 + d3 * d3 <= 1) m[i] = 1; }
+    else if (cr[i] >= 133 && cr[i] <= 180 && cb[i] >= 77 && cb[i] <= 135) m[i] = 1;
+  }
+  return { m, Y, w, h };
+}
+function autoBox(m, w, h, r, grow) {          // dilate (grow) or erode with a square of radius r
+  const t = new Uint8Array(m.length), o = new Uint8Array(m.length);
+  for (let y = 0; y < h; y++) { let run = 0; const base = y * w;
+    for (let x = 0; x < w; x++) { let v = grow ? 0 : 1; for (let k = -r; k <= r; k++) { const xx = x + k; const p = xx < 0 || xx >= w ? (grow ? 0 : 0) : m[base + xx]; if (grow ? p : !p) { v = grow ? 1 : 0; break; } } t[base + x] = v; } }
+  for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) { let v = grow ? 0 : 1; for (let k = -r; k <= r; k++) { const yy = y + k; const p = yy < 0 || yy >= h ? 0 : t[yy * w + x]; if (grow ? p : !p) { v = grow ? 1 : 0; break; } } o[y * w + x] = v; }
+  return o;
+}
+function autoLargest(m, w, h) {
+  const lab = new Int32Array(m.length), q = new Int32Array(m.length);
+  let best = 0, bestN = 0, id = 0;
+  for (let s = 0; s < m.length; s++) {
+    if (!m[s] || lab[s]) continue;
+    id++; let qh = 0, qt = 0, n = 0; q[qt++] = s; lab[s] = id;
+    while (qh < qt) { const p = q[qh++]; n++; const x = p % w, y = (p / w) | 0;
+      if (x > 0 && m[p - 1] && !lab[p - 1]) { lab[p - 1] = id; q[qt++] = p - 1; }
+      if (x < w - 1 && m[p + 1] && !lab[p + 1]) { lab[p + 1] = id; q[qt++] = p + 1; }
+      if (y > 0 && m[p - w] && !lab[p - w]) { lab[p - w] = id; q[qt++] = p - w; }
+      if (y < h - 1 && m[p + w] && !lab[p + w]) { lab[p + w] = id; q[qt++] = p + w; } }
+    if (n > bestN) { bestN = n; best = id; }
+  }
+  const out = new Uint8Array(m.length); let sx = 0, sy = 0, x0 = w, x1 = 0, y0 = h, y1 = 0;
+  for (let p = 0; p < m.length; p++) if (lab[p] === best && best) { out[p] = 1; const x = p % w, y = (p / w) | 0; sx += x; sy += y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (!bestN) return null;
+  const cx = sx / bestN, cy = sy / bestN; let mu20 = 0, mu02 = 0, mu11 = 0;
+  for (let p = 0; p < m.length; p++) if (out[p]) { const dx = p % w - cx, dy = ((p / w) | 0) - cy; mu20 += dx * dx; mu02 += dy * dy; mu11 += dx * dy; }
+  return { m: out, n: bestN, cx, cy, mu20, mu02, mu11, x0, x1, y0, y1, w, h };
+}
+function autoHand(img, T) {
+  const id = autoRender(img, T, 1);
+  let lastC = null;
+  for (const tol of [1, .78, .6, .46, .36]) {
+    const c = autoHandAt(id, tol);
+    if (!c) continue;
+    lastC = c;
+    const frame = c.rows.length, fingerRows = c.rows.filter(r => r.runs >= 3).length;
+    const touches = (c.x0 <= 1) + (c.x1 >= c.w - 2) + (c.y0 <= 1) + (c.y1 >= c.h - 2);
+    const frac = c.n / (c.w * c.h);
+    if (frac < .72 && touches <= 2 && fingerRows > frame * .02) { c.tol = tol; return c; }
+  }
+  return lastC ? { bg: true } : null;
+}
+function autoHandAt(id, tol) {
+  const sk = autoSkin(id, tol);
+  let m = autoBox(autoBox(sk.m, sk.w, sk.h, 1, true), sk.w, sk.h, 1, false);
+  m = autoBox(autoBox(m, sk.w, sk.h, 1, false), sk.w, sk.h, 1, true);
+  const c = autoLargest(m, sk.w, sk.h);
+  if (!c) return null;
+  const rows = [];
+  for (let y = 0; y < c.h; y++) {
+    let xl = -1, xr = -1, runs = 0, inRun = 0, len = 0, st = 0, best = 0, bl = -1, br = -1;
+    for (let x = 0; x <= c.w; x++) {
+      const on = x < c.w && c.m[y * c.w + x];
+      if (on) { if (xl < 0) xl = x; xr = x; if (!inRun) { inRun = 1; st = x; len = 0; } len++; }
+      else if (inRun) { if (len >= 3) runs++; if (len > best) { best = len; bl = st; br = x - 1; } inRun = 0; }
+    }
+    rows.push({ xl, xr, ext: xl < 0 ? 0 : xr - xl + 1, runs, lrun: best, lxl: bl, lxr: br });
+  }
+  return { ...c, rows };
+}
+const autoMed = a => { const s = a.filter(v => v > 0).sort((p, q) => p - q); return s.length ? s[s.length >> 1] : 0; };
+function autoMeasure(f) {
+  const { y0, y1, rows } = f, Hh = y1 - y0;
+  if (Hh < 40) return null;
+  const band = (a, b) => rows.slice(Math.round(y0 + a * Hh), Math.round(y0 + b * Hh) + 1);
+  const Wp = autoMed(band(.45, .62).map(r => r.lrun));
+  let yb = null;
+  for (let y = Math.round(y0 + .15 * Hh); y < y0 + .7 * Hh; y++) {
+    let ok = true; for (let k = 0; k < 4; k++) { const r = rows[y + k]; if (!r || r.lrun < .78 * Wp) { ok = false; break; } }
+    if (ok) { yb = y; break; }
+  }
+  const fingersSeen = yb !== null;
+  if (yb === null) yb = Math.round(y0 + .42 * Hh);
+  const upper = rows.slice(yb + 1, yb + Math.round(.07 * Hh) + 1).filter(r => r.lrun);
+  const xl = autoMed(upper.map(r => r.lxl + 1)) - 1, xr = autoMed(upper.map(r => r.lxr + 1)) - 1, Wpalm = Math.max(1, xr - xl);
+  let yw = y1, wristSeen = false;
+  for (let y = Math.round(yb + .55 * (y1 - yb)); y <= y1 - 3; y++) {
+    let ok = true; for (let k = 0; k < 4; k++) { const r = rows[y + k]; if (!r || r.lrun >= .8 * Wpalm) { ok = false; break; } }
+    if (ok) { yw = y; wristSeen = true; break; }
+  }
+  if (yw >= f.h - 3) wristSeen = false;
+  let outL = 0, outR = 0;
+  for (let y = Math.round(yb + .25 * (yw - yb)); y < yb + .9 * (yw - yb); y++) { const r = rows[y]; if (!r || !r.ext) continue; outL = Math.max(outL, xl - r.xl); outR = Math.max(outR, r.xr - xr); }
+  const thumb = Math.max(outL, outR) < .08 * Wpalm ? null : outR > outL ? 'right' : 'left';
+  return { y0, y1, yb, yw, xl, xr, Wpalm, fingersSeen, wristSeen, thumb, L: yw - yb, F: yb - y0 };
+}
+function autoFingers(f, M, thumbSide) {
+  const y = Math.round(M.yb - .3 * M.F); if (y <= M.y0) return null;
+  const segs = []; let st = -1;
+  for (let x = 0; x <= f.w; x++) { const on = x < f.w && f.m[y * f.w + x]; if (on && st < 0) st = x; if (!on && st >= 0) { if (x - st >= 3) segs.push([st, x - 1]); st = -1; } }
+  if (segs.length !== 4) return null;
+  const tips = segs.map(([a, b]) => { let top = y; for (let yy = y; yy >= M.y0; yy--) { let any = false; for (let x = a; x <= b; x++) if (f.m[yy * f.w + x]) { any = true; break; } if (!any) break; top = yy; } return top; });
+  const order = thumbSide === 'right' ? [3, 2, 1, 0] : [0, 1, 2, 3];
+  const idx = tips[order[0]], ring = tips[order[2]], d = (ring - idx) / Math.max(1, M.L);
+  return d > .035 ? 0 : d < -.035 ? 1 : 2;
+}
+function autoAlign(img, mirror, flip) {
+  const s0 = Math.max(W / img.width, H / img.height);
+  const T = { k: Math.min(W, H) / Math.hypot(img.width, img.height) / s0 * .98, rot: 0, dx: 0, dy: 0, flip };
+  let f = autoHand(img, T);
+  if (f && f.bg) return { error: 'background' };
+  if (!f || f.n < W * H * .03) return { error: 'nohand' };
+  const ang = Math.atan2(2 * f.mu11, f.mu20 - f.mu02) / 2 * 180 / Math.PI;
+  let rot = 90 - ang; rot = ((rot + 90) % 180 + 180) % 180 - 90; T.rot = rot;
+  f = autoHand(img, T); if (!f || f.bg) return { error: f && f.bg ? 'background' : 'nohand' };
+  const runRows = (a, b) => f.rows.slice(Math.round(f.y0 + a * (f.y1 - f.y0)), Math.round(f.y0 + b * (f.y1 - f.y0))).filter(r => r.runs >= 3).length;
+  if (runRows(.7, 1) > runRows(0, .3) * 1.3 + 2) { T.rot += 180; f = autoHand(img, T); if (!f || f.bg) return { error: f && f.bg ? 'background' : 'nohand' }; }
+  /* Straighten using the centre line of the fingers and upper palm (the thumb would pull a whole-hand axis sideways). */
+  const tilt = g => { const H0 = g.y1 - g.y0; let n = 0, sy = 0, sx = 0, syy = 0, sxy = 0;
+    for (let y = Math.round(g.y0 + .08 * H0); y < g.y0 + .6 * H0; y++) { const r = g.rows[y]; if (!r || !r.ext) continue; const x = (r.xl + r.xr) / 2; n++; sy += y; sx += x; syy += y * y; sxy += x * y; }
+    return n > 10 ? (n * sxy - sx * sy) / (n * syy - sy * sy) : 0; };
+  for (let it = 0; it < 3; it++) {
+    const b0 = tilt(f), d = Math.atan(b0) * 180 / Math.PI;
+    if (Math.abs(d) < .6) break;
+    let g = autoHand(img, { ...T, rot: T.rot + d });
+    if (g && !g.bg && Math.abs(tilt(g)) < Math.abs(b0)) { T.rot += d; f = g; continue; }
+    g = autoHand(img, { ...T, rot: T.rot - d });
+    if (g && !g.bg && Math.abs(tilt(g)) < Math.abs(b0)) { T.rot -= d; f = g; continue; }
+    break;
+  }
+  const M = autoMeasure(f); if (!M) return { error: 'nohand' };
+  return { T, f, M };
+}
+function autoBlur(src, w, h, r) {             // box blur through an integral image
+  const I = new Float64Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += src[y * w + x]; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + row; } }
+  const o = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const a = Math.max(0, x - r), b = Math.min(w, x + r + 1), c = Math.max(0, y - r), d = Math.min(h, y + r + 1);
+    o[y * w + x] = (I[d * (w + 1) + b] - I[c * (w + 1) + b] - I[d * (w + 1) + a] + I[c * (w + 1) + a]) / ((b - a) * (d - c));
+  }
+  return o;
+}
+function autoLines(img, T, mirror, opts) {
+  const S = 2, id = autoRender(img, T, S), sk = autoSkin(id, opts && opts.tol ? opts.tol : 1), w = sk.w, h = sk.h;
+  let hand = autoBox(autoBox(sk.m, w, h, 2, true), w, h, 2, false);
+  const big = autoLargest(hand, w, h); if (!big) return {};
+  hand = autoBox(big.m, w, h, 7, false);
+  const G = autoBlur(sk.Y, w, h, 1), B = autoBlur(sk.Y, w, h, 9);
+  const toX = cx => (mirror ? W - (cx + OX) : cx + OX) * S;
+  const xa = Math.min(toX(76), toX(290)), xb = Math.max(toX(76), toX(290)), ya = 212 * S, yb = 446 * S;
+  const D = new Float32Array(w * h), vals = [];
+  for (let y = ya; y < yb; y++) for (let x = Math.max(0, Math.round(xa)); x < Math.min(w, xb); x++) {
+    const i = y * w + x; if (!hand[i]) continue;
+    const d = B[i] - G[i]; D[i] = d; if (d > 0) vals.push(d);
+  }
+  if (vals.length < 500) return {};
+  vals.sort((p, q) => p - q);
+  const t = Math.max(2.5, vals[Math.floor(vals.length * .9)]), ref = vals[Math.floor(vals.length * .995)];
+  /* Score each known shape of each line against the creases: covered length minus uncovered length. */
+  const sampleD = (cx, cy) => { const X = Math.round(toX(cx)), Y = Math.round(cy * S); let m = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const xx = X + dx, yy = Y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; const v = D[yy * w + xx]; if (v > m) m = v; } return m; };
+  const sy = opts && opts.sy ? opts.sy : 1;
+  const place = (pts, dx, dy) => pts.map(([x, y]) => [x + dx, 206 + (y - 206) * sy + dy]);
+  const score = pts => {
+    let cov = 0, unc = 0, sumD = 0, n = 0, prev = bez(pts, 0);
+    for (let i = 1; i <= 48; i++) { const p = bez(pts, i / 48), seg = Math.hypot(p[0] - prev[0], p[1] - prev[1]); prev = p; const d = sampleD(p[0], p[1]); const c = Math.max(0, Math.min(1, (d - t * .55) / (t * .7))); cov += c * seg; unc += (1 - c) * seg; sumD += d; n++; }
+    return { s: cov - .85 * unc, cov: cov / (cov + unc), mD: sumD / n };
+  };
+  const SHAPES = { heart: ['jupiter', 'straight', 'saturn'], head: ['straight', 'sloping', 'short'], life: ['wide', 'close'], fate: ['wrist', 'moon', 'late'] };
+  const res = {};
+  const suppress = pts => { for (let i = 0; i <= 60; i++) { const p = bez(pts, i / 60), X = Math.round(toX(p[0])), Y = Math.round(p[1] * S); for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) { const xx = X + dx, yy = Y + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h) D[yy * w + xx] = Math.min(D[yy * w + xx], 0); } } };
+  Object.entries(SHAPES).forEach(([line, ks]) => {
+    let best = null; const R = line === 'life' ? 28 : 16;
+    ks.forEach(k => { for (let dx = -R; dx <= R; dx += 4) for (let dy = -20; dy <= 20; dy += 4) { const pts = place(PATHS[line][k], dx, dy), sc = score(pts); if (!best || sc.s > best.s) best = { ...sc, k, pts }; } });
+    if (!best) return;
+    const ok = best.cov >= (line === 'fate' ? .55 : .5);
+    if (!ok) { if (line === 'fate' && best.cov < .3) res.fateAbsent = true; return; }
+    /* Follow the real crease: snap to it, trim weak ends, then extend while the crease continues. */
+    let Q = Array.from({ length: 41 }, (_, i) => bez(best.pts, i / 40));
+    const nrm = (A, i) => { const a = A[Math.max(0, i - 1)], b = A[Math.min(A.length - 1, i + 1)]; let tx = b[0] - a[0], ty = b[1] - a[1]; const L = Math.hypot(tx, ty) || 1; return [-ty / L, tx / L]; };
+    const offs = Q.map((q, i) => { const [nx, ny] = nrm(Q, i); let bo = 0, bd = -1; for (let o = -9; o <= 9; o++) { const d = sampleD(q[0] + nx * o, q[1] + ny * o); if (d > bd) { bd = d; bo = o; } } return bo; });
+    Q = Q.map((q, i) => { let su = 0, n = 0; for (let k = -3; k <= 3; k++) { const j = i + k; if (j >= 0 && j < offs.length) { su += offs[j]; n++; } } const [nx, ny] = nrm(Q, i); return [q[0] + nx * su / n, q[1] + ny * su / n]; });
+    const strong = q => sampleD(q[0], q[1]) >= t * .6;
+    let a = 0, b = Q.length - 1;
+    while (a < b - 6 && !(strong(Q[a]) && strong(Q[a + 1]))) a++;
+    while (b > a + 6 && !(strong(Q[b]) && strong(Q[b - 1]))) b--;
+    Q = Q.slice(a, b + 1);
+    const atStart = line === 'fate', maxLen = { heart: 70, head: 80, life: 50, fate: 110 }[line];
+    let P2 = atStart ? [...Q].reverse() : [...Q];
+    let [x, y] = P2[P2.length - 1], [px, py] = P2[Math.max(0, P2.length - 5)];
+    let dx = x - px, dy = y - py; { const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L; }
+    for (let sgo = 0; sgo < maxLen; sgo += 3) {
+      const nx = -dy, ny = dx; let bd = -1, bo = 0;
+      for (let o = -3; o <= 3; o++) { const d = sampleD(x + dx * 3 + nx * o, y + dy * 3 + ny * o); if (d > bd) { bd = d; bo = o; } }
+      const X2 = x + dx * 3 + nx * bo, Y2 = y + dy * 3 + ny * bo;
+      if (bd < t * .7 || X2 < 70 || X2 > 294 || Y2 < 200 || Y2 > 452) break;
+      let ex = X2 - x, ey = Y2 - y; const l = Math.hypot(ex, ey) || 1; dx = .75 * dx + .25 * ex / l; dy = .75 * dy + .25 * ey / l; const l2 = Math.hypot(dx, dy); dx /= l2; dy /= l2;
+      x = X2; y = Y2; P2.push([x, y]);
+    }
+    Q = atStart ? P2.reverse() : P2;
+    const UV = Q.map(([cx, cy]) => [(cx - 72) / 220, (cy - 206) / 224]);
+    const byU = [...UV].sort((p, q) => p[0] - q[0]), byV = [...UV].sort((p, q) => p[1] - q[1]);
+    let k = best.k;
+    if (line === 'heart') { const end = byU[0], st = byU[byU.length - 1]; k = end[0] > .34 ? 'saturn' : (end[1] < st[1] - .06) ? 'jupiter' : 'straight'; }
+    if (line === 'head') { const st = byU[0], en = byU[byU.length - 1], span = en[0] - st[0], drop = en[1] - st[1]; k = drop > .17 ? 'sloping' : span < .7 ? 'short' : 'straight'; }
+    if (line === 'life') { const mid = UV.filter(p => p[1] > .3 && p[1] < .85); k = Math.max(...(mid.length ? mid : UV).map(p => p[0])) > .4 ? 'wide' : 'close'; }
+    if (line === 'fate') { const bot = byV[byV.length - 1]; k = bot[0] > .62 ? 'moon' : bot[1] > .8 ? 'wrist' : 'late'; }
+    const mD = Q.reduce((su, q) => su + sampleD(q[0], q[1]), 0) / Q.length, rel = mD / Math.max(t, ref);
+    const depth = rel > .62 ? 'deep' : rel > .4 ? 'clear' : 'faint';
+    if (line !== 'fate') for (let i = 0; i < Q.length; i++) { const X = Math.round(toX(Q[i][0])), Y = Math.round(Q[i][1] * S); for (let ddy = -5; ddy <= 5; ddy++) for (let ddx = -5; ddx <= 5; ddx++) { const xx = X + ddx, yy = Y + ddy; if (xx >= 0 && yy >= 0 && xx < w && yy < h) D[yy * w + xx] = Math.min(D[yy * w + xx], 0); } }
+    res[line] = { k: line === 'fate' && depth === 'faint' ? 'faint' : k, depth, cov: Math.round(best.cov * 100) / 100, pts: Array.from({ length: 9 }, (_, i) => Q[Math.round(i * (Q.length - 1) / 8)]) };
+  });
+  return res;
+}
+/* The whole auto-read: returns what was found, or an error the page can explain. */
+function autoReadPalm(img, mirror) {
+  let A = autoAlign(img, mirror, false);
+  if (A.error) return A;
+  let flipped = false;
+  const want = mirror ? 'right' : 'left';
+  if (A.M.thumb && A.M.thumb !== want) { const B = autoAlign(img, mirror, true); if (!B.error && B.M.thumb === want) { A = B; flipped = true; } }
+  const { T, f, M } = A;
+  const fs = 220 / M.Wpalm, C0 = [W / 2, H / 2], pcx = (M.xl + M.xr) / 2, tx = mirror ? W - (182 + OX) : 182 + OX;
+  const Tf = { k: T.k * fs, rot: T.rot, flip: T.flip, dx: tx - C0[0] - fs * (pcx - C0[0]), dy: 206 - C0[1] - fs * (M.yb - C0[1]) };
+  const out = { T: Tf, flipped, found: [] };
+  if (M.wristSeen && M.fingersSeen) {
+    const sq = M.L / M.Wpalm < 1.12, lf = M.F / M.L > .8;
+    out.shape = sq ? (lf ? 'Air' : 'Earth') : (lf ? 'Water' : 'Fire');
+  }
+  const ir = autoFingers(f, M, want); if (ir !== null && ir !== undefined) out.ir = ir;
+  out.lines = autoLines(img, Tf, mirror, { tol: f.tol || 1, sy: Math.max(.82, Math.min(1.22, (M.L * fs) / 224)) });
+  out.fateAbsent = !!out.lines.fateAbsent; delete out.lines.fateAbsent;
+  if (!out.lines.heart && !out.lines.head && !out.lines.life) out.lines = {};   /* a fate line on its own is not trustworthy */
+  return out;
+}
+function applyAutoRead(res) {
+  state.photoT = res.T;
+  const set = (k, v) => { state.obs[k] = v; state.autoKeys.add(k); state.aiKeys.delete(k); };
+  const names = [];
+  if (res.shape) { set('shape', res.shape); names.push('hand shape'); }
+  if (res.ir !== undefined) { set('ir', res.ir); names.push('finger lengths'); }
+  ['heart', 'head', 'life', 'fate'].forEach(k => {
+    const L = res.lines && res.lines[k]; if (!L) return;
+    set(k, L.k); set(k + '.depth', L.depth); state.trace[k] = L.pts; names.push(`${k} line`);
+  });
+  pc.dirty = true;
+  return names;
+}
+const autoSummary = (names, flipped) => names.length
+  ? `Auto-read found your ${names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]}. It is an estimate from the photo, so tap Check my palm to adjust anything.${flipped ? ` Your photo looks like a ${$('#hand').value === 'right' ? 'left' : 'right'} hand (or a mirrored selfie), so it was flipped to fit. If it really is your ${$('#hand').value === 'right' ? 'left' : 'right'} hand, change Hand above and tap Auto-read again.` : ''}`
+  : 'Auto-read found your hand but could not make out the lines clearly. Try a sharper photo in daylight, or check your palm by hand.';
+async function runAutoRead(btn, out, then) {
+  if (!state.photo) { out.textContent = 'Add a palm photo first.'; return false; }
+  btn.disabled = true; const lab = btn.textContent; btn.textContent = 'Reading your palm…'; out.textContent = 'Finding your hand and lines…';
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const res = autoReadPalm(state.photo, state.mirror);
+    if (res.error) { out.textContent = res.error === 'background' ? 'Auto-read couldn’t separate your hand from the background, which is close to your skin colour. Retake the photo against a plain, darker background, like a dark cloth or a dark table.' : 'Auto-read couldn’t find a hand in this photo. Use a photo of your open palm, fingers up, against a plain background.'; return false; }
+    const names = applyAutoRead(res);
+    const msg = autoSummary(names, res.flipped);
+    out.textContent = msg; $('#photoHint').textContent = msg;
+    if (then) then();
+    return true;
+  } catch (e) {
+    out.textContent = 'Auto-read hit a problem with this photo. Check your palm by hand instead.'; return false;
+  } finally { btn.disabled = false; btn.textContent = lab; }
+}
+
 /* ---------- inputs ---------- */
+pcEl('autoFormBtn').addEventListener('click', () => runAutoRead(pcEl('autoFormBtn'), pcEl('autoFormOut'), () => { pcFormUpdate(); run(false); }));
 $('#form').addEventListener('submit', e => { e.preventDefault(); run(false); });
 $('#hand').addEventListener('change', () => {
   const m = $('#hand').value === 'right';
@@ -4621,6 +4923,7 @@ async function handleFile(f) {
   state.hasPhoto = true;
   state.thumb = got ? makeThumb(got.img) : null;
   state.photoSig = `${f.name || ''}:${f.size}:${got ? got.img.naturalWidth + 'x' + got.img.naturalHeight : f.type}`;
+  state.autoKeys.forEach(k => { delete state.obs[k]; }); state.autoKeys = new Set();
   state.trace = {}; state.photoT = { k: 1, rot: 0, dx: 0, dy: 0, flip: false };
   state.photoQ = got ? photoQuality(got.img) : null;
   $('#photoHint').textContent = got
@@ -4628,7 +4931,7 @@ async function handleFile(f) {
     : `Got ${f.name || 'your file'}. This format can't be shown here, but your palm is loaded. Press Read my palm.`;
   state.geom = null; render(1);
   $('#status').textContent = got ? 'Photo loaded \u00b7 ready to scan' : 'Palm loaded \u00b7 ready to scan';
-  setGate();
+  setGate(); pcFormUpdate();
   if (getDob()) {
     if (pcStatus(state.obs).n) { $('#photoHint').textContent = 'Photo added. Reading your palm now\u2026'; run(false); }
     else { $('#photoHint').textContent = photoTip(state.photoQ) || 'Photo added. Check your palm for an accurate reading.'; pcOpen('read'); }
@@ -4748,7 +5051,7 @@ $('#placeUse').addEventListener('click', () => {
 /* Clear the palm photo so a different person's reading never reuses it. */
 function clearPhoto(msg) {
   state.photo = null; state.hasPhoto = false; state.photoSig = ''; state.thumb = null; state.geom = null; state.savedView = false;
-  state.obs = {}; state.trace = {}; state.aiKeys = new Set(); state.photoT = { k: 1, rot: 0, dx: 0, dy: 0, flip: false }; pcFormUpdate();
+  state.obs = {}; state.trace = {}; state.aiKeys = new Set(); state.autoKeys = new Set(); state.photoT = { k: 1, rot: 0, dx: 0, dy: 0, flip: false }; pcFormUpdate();
   if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
   render(1); setGate();
   $('#status').textContent = 'Add a palm photo';

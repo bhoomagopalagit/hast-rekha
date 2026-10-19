@@ -16,7 +16,8 @@ The app works offline, opens your gallery or camera for the palm photo, and save
 
 ## What it does
 
-- **Palm check:** line up your palm photo, trace your lines and match what you see to simple pictures, so the reading follows your real hand.
+- **Auto-read (one tap):** the app finds your hand in the photo, lines it up, and reads your hand shape and your heart, head, life and fate lines on your phone, then shows your reading.
+- **Palm check (most exact):** line up your palm photo, trace your lines and match what you see to simple pictures, so the reading follows your real hand.
 - **Detailed palm reading:** heart, head, life and fate lines, minor lines, mounts, fingers, fingerprints (shankh and chakra), special signs, both-hands comparison and a full "palm in depth" write-up.
 - **Vedic birth chart:** Moon rashi, nakshatra, Lagna, North and South Indian charts, navamsa, Vimshottari dasha, Mangal dosha and Sade Sati, calculated from real planet positions (Lahiri ayanamsa).
 - **Today:** panchang, Rahu kalam, good days for the next 30 days (Tara Bala and Chandra Bala), a 12-month forecast and biorhythm.
