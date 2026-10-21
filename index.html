@@ -663,6 +663,10 @@ html.pc-open, html.pc-open body { overflow: hidden; }
 .src.ok { color: var(--life); border-color: color-mix(in srgb, var(--life) 50%, transparent); }
 .src.ok::before { content: "\2713\00a0"; }
 .src.est { color: var(--muted); }
+.mode-opts { display: grid; gap: 14px; }
+.mode-card { gap: 10px; }
+.mode-card .mode-t { font-family: var(--display); font-size: 1.35rem; color: var(--fg); margin: 0; }
+.mode-card .primary, .mode-card .ghost { justify-self: start; font-size: 1.08rem; padding: 11px 18px; }
 .pcbtns { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .pcbtns .primary { font-size: 1.1rem; padding: 10px 16px; }
 .auto-card { border-color: var(--gold); }
@@ -792,6 +796,13 @@ html.pc-open, html.pc-open body { overflow: hidden; }
           </select>
           <p class="hint">Indian palmistry (Hast Rekha Shastra) reads a woman's left hand and a man's right hand. Modern palm readers use the hand you write with instead. Photograph the hand you pick.</p>
         </div>
+        <div class="field pcfield">
+          <span class="label">Read my palm</span>
+          <p class="hint"><b>Auto-read</b> lines up your palm and reads your lines from the photo in one tap. Or <b>check it yourself</b> for the most exact reading (about 3 minutes).</p>
+          <div class="pcrow"><div class="pcmeter"><i id="pcFormBar" style="width:0"></i></div><span id="pcFormTxt">Not checked yet · the palm part is estimated</span></div>
+          <div class="pcbtns"><button type="button" class="primary" id="autoFormBtn">&#10022; Auto-read my palm</button><button type="button" class="ghost" id="pcFormBtn">Check it myself</button></div>
+          <p class="hint" id="autoFormOut" aria-live="polite"></p>
+        </div>
         <div class="field">
           <span class="label">Palm photo <span class="req">(required)</span></span>
           <div class="upload-row">
@@ -821,13 +832,6 @@ html.pc-open, html.pc-open body { overflow: hidden; }
             <p><b>Photo not coming through?</b> Some apps block the gallery and image pasting. Open this page in Chrome or Safari and upload there, or carry on with the drawn palm for now.</p>
             <button type="button" class="ghost" id="useDrawn">Continue with the drawn palm</button>
           </div>
-        </div>
-        <div class="field pcfield">
-          <span class="label">Palm check</span>
-          <p class="hint">Match your lines, mounts and fingers to simple pictures, and trace your lines on your photo. The reading then follows your real palm. About 3 minutes.</p>
-          <div class="pcrow"><div class="pcmeter"><i id="pcFormBar" style="width:0"></i></div><span id="pcFormTxt">Not checked yet · the palm part is estimated</span></div>
-          <div class="pcbtns"><button type="button" class="primary" id="autoFormBtn" hidden>&#10022; Auto-read my palm</button><button type="button" class="ghost pcopen" id="pcFormBtn">Check my palm</button></div>
-          <p class="hint" id="autoFormOut" aria-live="polite"></p>
         </div>
         <p class="err" id="err" role="alert"></p>
         <button class="primary" id="go" type="submit" disabled>Upload a photo to continue</button>
@@ -3369,6 +3373,7 @@ const PCQ = {
       ...SIGNS.map(s => ({ v: 'sign:' + s.k, t: s.n, sub: s.where }))] }] },
   done: { eb: 'Palm check', title: 'All done', kind: 'done' }
 };
+PCQ.mode = { eb: 'Read my palm', title: 'How should we read your palm?', kind: 'mode' };
 PCQ.other = { eb: 'Optional · both hands', title: 'Your other hand', other: true,
   help: 'Palmists read one hand as what you were born with and the other as what you have made of your life. Look at your other hand and pick the closest shape for each line. Skip this if you like.',
   groups: ['heart', 'head', 'life', 'fate'].map(k => ({ ...PCQ[k].groups[0], key: 'other.' + k, as: k, q: PCQ[k].title.split(' · ')[0] + ' on your other hand' })) };
@@ -3603,7 +3608,7 @@ function shapeSVG(sq, lf) {
 /* ---------- the palm check sheet ---------- */
 const pc = { i: 0, steps: [], then: null, draw: false, dirty: false, mounts: null, marks: null, ptrs: new Map(), markLine: 'life', markType: 'island', markPos: 2 };
 const pcEl = id => document.getElementById(id);
-function pcStepsFor() { return [...(state.photo ? ['align'] : []), 'shape', 'heart', 'head', 'life', 'fate', 'sun', 'merc', 'marriage', 'lower', 'marks', 'mounts', 'fingers', 'thumb', 'prints', 'signs', 'other', 'done']; }
+function pcStepsFor() { return [...(state.photo ? ['mode', 'align'] : []), 'shape', 'heart', 'head', 'life', 'fate', 'sun', 'merc', 'marriage', 'lower', 'marks', 'mounts', 'fingers', 'thumb', 'prints', 'signs', 'other', 'done']; }
 function pcOpen(then, at) {
   pc.steps = pcStepsFor(); pc.then = then || null; pc.dirty = false; pc.draw = false;
   pc.marks = null; pc.mounts = null;
@@ -3632,14 +3637,18 @@ function pcRender() {
   pcEl('pcBar').style.width = `${Math.round((pc.i + 1) / n * 100)}%`;
   pcEl('pcCount').textContent = `${pc.i + 1} / ${n}`;
   pcEl('pcBack').hidden = pc.i === 0;
-  pcEl('pcSkip').hidden = id === 'done';
+  pcEl('pcSkip').hidden = id === 'done' || id === 'mode';
+  pcEl('pcNext').hidden = id === 'mode';
   pcEl('pcSkip').textContent = id === 'align' ? 'Skip lining up' : 'Not sure · skip';
   pcEl('pcNext').textContent = id === 'done' ? 'See my reading' : 'Next';
   pc.draw = false;
   let h = `<span class="eyebrow">${q.eb}</span><h2 id="pcTitle" tabindex="-1">${q.title}</h2>`;
-  if (id === 'align') h += `<p class="pc-help">Let's read your real palm. Answer what you can see, and tap <b>Not sure</b> for anything you can't. It takes about 3 minutes.</p>`;
+  if (id === 'align') h += `<p class="pc-help">Let's read your real palm by hand. Answer what you can see, and tap <b>Not sure</b> for anything you can't. It takes about 3 minutes.</p>`;
   if (id === 'align' && photoTip(state.photoQ)) h += `<p class="note">${photoTip(state.photoQ)}</p>`;
-  if (id === 'align' && state.photo) h += `<div class="ai-card auto-card"><p><b>&#10022; Don’t want to pick lines yourself?</b> Tap Auto-read. The app finds your hand, lines it up, reads your hand shape and your heart, head, life and fate lines from the photo, then shows your reading. It all happens on your phone.</p><div class="ai-row"><button type="button" class="primary" id="autoRead">Auto-read my palm</button></div><p class="hint" id="autoOut" aria-live="polite"></p></div>`;
+  if (id === 'mode') h += `${photoTip(state.photoQ) ? `<p class="note">${photoTip(state.photoQ)}</p>` : ''}<div class="mode-opts">
+      <div class="ai-card auto-card mode-card"><p class="mode-t">&#10022; Auto-read <span class="src auto">one tap</span></p><p>The app lines up your palm in the outline by itself, reads your hand shape and your heart, head, life and fate lines from the photo, and shows your reading. It all happens on your phone.</p><button type="button" class="primary" id="autoRead">Auto-read my palm</button><p class="hint" id="autoOut" aria-live="polite"></p></div>
+      <div class="ai-card mode-card"><p class="mode-t">Line it up and check it myself</p><p>Drag your photo into the outline, trace your lines and match what you see to simple pictures. The most exact reading, about 3 minutes.</p><button type="button" class="ghost" id="modeManual">Line it up myself</button></div>
+    </div>`;
   if (id === 'align') h += aiCardHTML();
   if (q.help) h += `<p class="pc-help">${q.help}</p>`;
   if (id === 'align') {
@@ -3713,7 +3722,7 @@ function pcMarksHTML() {
 }
 function pcDoneHTML() {
   const s = pcStatus(state.obs), pct = Math.round(s.n / s.total * 100);
-  const steps = pc.steps.filter(x => x !== 'align' && x !== 'done');
+  const steps = pc.steps.filter(x => x !== 'align' && x !== 'done' && x !== 'mode');
   return `<div class="pcmeter big" role="img" aria-label="${s.n} of ${s.total} checked"><i style="width:${pct}%"></i></div>
     <p class="pc-help"><b>${s.n} of ${s.total}</b> palm features checked. ${s.n === s.total ? 'Your whole palm reading now follows your own hand.' : 'Anything you skipped is estimated and marked that way in your reading. Tap a step to go back to it.'}</p>
     <ul class="pc-done">${steps.map(st => { let f = PC_FEATURES.filter(x => x[2] === st), got = f.filter(x => s.keys.has(x[0])).length; if (!f.length) { f = PCQ[st].groups; got = f.filter(g => pcHas(state.obs, g.key)).length; } return `<li><button type="button" data-jump="${st}"><span>${PCQ[st].title}</span><small class="${got === f.length ? 'ok' : got ? 'part' : 'no'}">${got === f.length ? 'Checked' : got ? `${got} of ${f.length}` : 'Skipped'}</small></button></li>`; }).join('')}</ul>`;
@@ -3750,6 +3759,8 @@ function pcBind(id) {
   body.querySelectorAll('[data-jump]').forEach(b => b.addEventListener('click', () => { pc.i = pc.steps.indexOf(b.dataset.jump); pcRender(); }));
   const quick = pcEl('pcQuick');
   if (quick) quick.addEventListener('click', () => pcClose(true));
+  const mm = pcEl('modeManual');
+  if (mm) mm.addEventListener('click', () => { pc.i = pc.steps.indexOf('align'); pcRender(); });
   const aur = pcEl('autoRead');
   if (aur) aur.addEventListener('click', () => runAutoRead(aur, pcEl('autoOut'), () => pcClose(true)));
   const air = pcEl('aiRead');
@@ -3900,12 +3911,11 @@ pcEl('pc').addEventListener('keydown', e => {
 document.addEventListener('click', e => { const b = e.target.closest('.pcopen'); if (b) pcOpen(state.hasPhoto ? null : 'read', b.dataset.step); });
 
 function pcFormUpdate() {
-  const ab = pcEl('autoFormBtn'); if (ab) ab.hidden = !state.photo;
   const s = pcStatus(state.obs);
   const bar = pcEl('pcFormBar'); if (!bar) return;
   bar.style.width = `${Math.round(s.n / s.total * 100)}%`;
   pcEl('pcFormTxt').textContent = s.n ? `${s.n} of ${s.total} palm features checked` : 'Not checked yet · the palm part is estimated';
-  pcEl('pcFormBtn').textContent = s.n ? 'Edit my palm check' : 'Check my palm';
+  pcEl('pcFormBtn').textContent = s.n ? 'Edit my palm check' : 'Check it myself';
 }
 
 /* ================= CLAUDE ASSIST: read the photo, answer questions (only where the viewer offers it) ================= */
@@ -4815,7 +4825,17 @@ async function runAutoRead(btn, out, then) {
 }
 
 /* ---------- inputs ---------- */
-pcEl('autoFormBtn').addEventListener('click', () => runAutoRead(pcEl('autoFormBtn'), pcEl('autoFormOut'), () => { pcFormUpdate(); run(false); }));
+/* Auto-read and Check it myself work before a photo is added: they open the gallery, then carry on by themselves. */
+const autoThenRead = () => runAutoRead(pcEl('autoFormBtn'), pcEl('autoFormOut'), () => { pcFormUpdate(); if (getDob()) run(false); else $('#err').textContent = 'Pick your day, month and year of birth, then tap Read my palm.'; });
+pcEl('autoFormBtn').addEventListener('click', () => {
+  if (state.photo) { autoThenRead(); return; }
+  if (state.hasPhoto) { pcEl('autoFormOut').textContent = 'Auto-read needs a real palm photo. Add one with Choose from gallery or Take a photo.'; return; }
+  state.pendingMode = 'auto'; pcEl('autoFormOut').textContent = 'Choose your palm photo. Auto-read starts as soon as it loads.'; openGallery();
+});
+pcEl('pcFormBtn').addEventListener('click', () => {
+  if (!state.hasPhoto) { state.pendingMode = 'manual'; openGallery(); return; }
+  pcOpen(null);
+});
 $('#form').addEventListener('submit', e => { e.preventDefault(); run(false); });
 $('#hand').addEventListener('change', () => {
   const m = $('#hand').value === 'right';
@@ -4932,9 +4952,11 @@ async function handleFile(f) {
   state.geom = null; render(1);
   $('#status').textContent = got ? 'Photo loaded \u00b7 ready to scan' : 'Palm loaded \u00b7 ready to scan';
   setGate(); pcFormUpdate();
-  if (getDob()) {
-    if (pcStatus(state.obs).n) { $('#photoHint').textContent = 'Photo added. Reading your palm now\u2026'; run(false); }
-    else { $('#photoHint').textContent = photoTip(state.photoQ) || 'Photo added. Check your palm for an accurate reading.'; pcOpen('read'); }
+  const mode = state.pendingMode; state.pendingMode = null;
+  if (mode === 'auto' && state.photo) { autoThenRead(); return; }
+  if (getDob() || mode === 'manual') {
+    if (pcStatus(state.obs).n && mode !== 'manual') { $('#photoHint').textContent = 'Photo added. Reading your palm now\u2026'; run(false); }
+    else { $('#photoHint').textContent = photoTip(state.photoQ) || 'Photo added. Choose Auto-read, or check your palm yourself.'; pcOpen('read', mode === 'manual' && state.photo ? 'align' : undefined); }
   }
 }
 ['#photo', '#photo2', '#photo3'].forEach(sel => {

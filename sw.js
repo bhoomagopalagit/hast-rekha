@@ -1,5 +1,5 @@
 /* Hast Rekha offline support: app files load from the cache, fonts are cached after first use. */
-const CACHE = 'hast-rekha-v15';
+const CACHE = 'hast-rekha-v16';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
