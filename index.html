@@ -1796,7 +1796,7 @@ function deepPalm(r, rng, pick, age) {
   // rare lines and gifts
   r.gifts = GIFTS.filter(g => chance(g.p));
   if (r.gifts.some(g => g.id === 'simian')) r.gifts = r.gifts.filter(g => g.id !== 'sydney' && g.id !== 'writer');
-  if (!r.gifts.length) r.gifts = [GIFTS.find(g => g.id === (chance(.5) ? 'girdle' : 'family'))];
+  if (!r.gifts.length) { const pickId = chance(.5) ? 'girdle' : 'family'; r.gifts = [GIFTS.find(g => g.id === pickId)]; }
   r.hasGift = id => r.gifts.some(g => g.id === id);
   // mounts with levels; the rashi lord's mount gets a lift
   r.mount10 = MOUNT10.map(m => {

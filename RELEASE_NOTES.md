@@ -4,6 +4,8 @@
 
 ## What's new
 
+- **Fixed: "Something went wrong while reading (Cannot read properties of undefined)".** For some names and birth dates the reading stopped with this error, often right after Auto-read. Readings now work for every date (tested on 1,800 readings).
+
 - **The app updates itself.** Each time it opens it checks this page and downloads the newest palm reader, so you won't need to reinstall for future updates. Install this version once to get it.
 - **Lines stay on your palm.** Auto-read now checks that your hand fits the palm outline. If it doesn't, it takes you to "Line up your palm" instead of guessing.
 - **No lines on a photo that isn't lined up.** Lines appear only after the photo is lined up.
