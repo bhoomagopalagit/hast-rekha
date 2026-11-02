@@ -18,6 +18,7 @@ The app works offline, opens your gallery or camera for the palm photo, and save
 
 - Push a change to `index.html` and GitHub Actions builds a new release with `HastRekha.apk`, `index.html` and `version.json`. Installed apps pick up the new `index.html` the next time they open.
 - If you change anything under `android/` (Java code, manifest, Gradle), add 1 to the number in `android/SHELL_VERSION` so installed apps ask people to install the new APK.
+- Each release's "What's new" text comes from `RELEASE_NOTES.md`; edit it alongside a change before pushing.
 - The website updates by itself too: it always loads the newest version when online and falls back to the saved copy offline.
 
 ## What it does

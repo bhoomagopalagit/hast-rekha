@@ -7,6 +7,7 @@ on:
       - 'index.html'
       - 'android/**'
       - 'sw.js'
+      - 'RELEASE_NOTES.md'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -54,12 +55,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: app-v${{ github.run_number }}
-          name: Hast Rekha app ${{ github.run_number }}
-          body: |
-            Android app for the Hast Rekha Palm Reader.
-            Download HastRekha.apk below, open it on your phone and tap Install.
-            If Android asks, allow installs from this source (your browser or Files app).
-            Installed apps update themselves: they download the new palm reader from this release when they open.
+          name: Hast Rekha 1.${{ github.run_number }}
+          body_path: RELEASE_NOTES.md
           files: |
             HastRekha.apk
             update/index.html
