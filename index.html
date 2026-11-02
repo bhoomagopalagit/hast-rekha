@@ -864,7 +864,7 @@ window.addEventListener('unhandledrejection', e => reportErr(e.reason && e.reaso
 const cv = $('#palm'), ctx = cv.getContext('2d');
 const W = 360, H = 460, OX = 22;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const state = { photo: null, hasPhoto: false, photoSig: '', mirror: true, geom: null, obs: {}, trace: {}, aiKeys: new Set(), autoKeys: new Set(), askTurns: [], photoT: { k: 1, rot: 0, dx: 0, dy: 0, flip: false } };
+const state = { photo: null, hasPhoto: false, photoSig: '', mirror: true, geom: null, obs: {}, trace: {}, aiKeys: new Set(), autoKeys: new Set(), askTurns: [], photoT: { k: 1, rot: 0, dx: 0, dy: 0, flip: false }, aligned: false };
 
 function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 let C = {};
@@ -1862,6 +1862,7 @@ function geomExtras(r, g) {
     if (info[base]) L.info = info[base];
     else if (base.startsWith('gift-')) { const gf = GIFTS.find(x => x.id === base.slice(5)); if (gf) L.info = [gf.n, gf.t]; }
   });
+  const TR = r.trace || {}; g.forEach(L => { if (TR[L.id]) L.traced = true; });
   return g;
 }
 function minorInfo(r) {
@@ -2612,6 +2613,8 @@ function drawLine(L, prog) {
   const hl = state.hl === L;
   ctx.strokeStyle = C[L.color] || C.gold; ctx.lineWidth = (L.minor ? 1.5 : L.id === 'sister' ? 1.6 : 2.6) + (hl ? 2 : 0); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.globalAlpha = hl ? 1 : L.alpha ?? 1; ctx.shadowColor = C[L.color] || C.gold; ctx.shadowBlur = hl ? 16 : 8;
+  /* On a real photo, a line that wasn't found or traced on the palm is only an estimate: draw it dashed and fainter. */
+  if (state.photo && !L.traced && !hl) { ctx.setLineDash([7, 6]); ctx.globalAlpha *= .7; ctx.shadowBlur = 4; }
   ctx.beginPath(); let pen = false;
   for (let i = 0; i <= n; i++) {
     const t = i / n;
@@ -2644,8 +2647,16 @@ function render(prog = 1, sweepY = null) {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = C.panel; ctx.fillRect(0, 0, W, H);
   if (state.photo) drawPhoto(); else drawHand();
-  drawMounts();
-  if (state.geom) {
+  const unaligned = state.photo && !state.aligned;
+  if (!unaligned) drawMounts();
+  if (unaligned && state.geom && prog >= 1 && sweepY === null) {
+    ctx.save(); ctx.fillStyle = C.night; ctx.globalAlpha = .82; ctx.beginPath(); ctx.roundRect(30, H - 74, W - 60, 52, 8); ctx.fill();
+    ctx.globalAlpha = 1; ctx.fillStyle = C.gold; ctx.font = '600 12px "Overpass Mono", ui-monospace, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Lines hidden: photo not lined up', W / 2, H - 56);
+    ctx.font = '11px "Overpass Mono", ui-monospace, monospace'; ctx.fillStyle = C.cream || '#f3ecd8';
+    ctx.fillText('Tap Check it myself to line it up', W / 2, H - 38); ctx.restore();
+  }
+  if (state.geom && !unaligned) {
     state.geom.forEach(L => drawLine(L, prog));
     if (prog >= 1 && !state.showAges) state.geom.forEach(L => { if (!L.mark && !L.lineMark && !L.shape) drawLabel(L); });
     if (prog >= 1 && state.showAges) drawAgeTicks();
@@ -3224,7 +3235,7 @@ async function runInner(sample, instant) {
   const r = compose(name, dob, hand, getTime(), placePicker.get(), sample ? null : state.obs, sample ? {} : state.trace);
   state.reading = r; state.hl = null; state.hlMount = null; $('#palmInfo').hidden = true;
   state.geom = r.geom;
-  const handLabel = `${state.photoSig === 'drawn' ? 'Drawn palm' : state.hasPhoto ? 'Your photo' : sample ? 'Drawn palm' : 'Drawn palm'} · ${hand} hand`;
+  const handLabel = `${state.photoSig === 'drawn' ? 'Drawn palm' : state.hasPhoto ? 'Your photo' : 'Drawn palm'} · ${hand} hand${state.photo && !sample && !state.aligned ? ' · line up your photo to see the lines' : state.photo && !sample && r.geom.some(L => ['heart', 'head', 'life', 'fate'].includes(L.id) && !L.traced) ? ' · dashed lines are estimates' : ''}`;
   if (!sample && !instant) { saveInputs(); state.lastRead = { name: name.toLowerCase(), dob }; }
   if (sample || reduced || instant) { render(1); showReading(r, sample); $('#status').textContent = handLabel; setGate(); return; }
   state.busy = true;
@@ -3878,6 +3889,7 @@ function pcDrawCanvas(liveStroke) {
   }
 }
 function pcCommit(id) {
+  if (id === 'align') { state.aligned = true; pc.dirty = true; }
   if (id === 'mounts' && pc.mounts) { state.obs.mounts = { ...pc.mounts }; pc.dirty = true; }
   if (id === 'marks' && pc.marks) { state.obs.marks = [...pc.marks]; pc.dirty = true; }
   if (id === 'signs' && !state.obs.signs) { state.obs.signs = []; pc.dirty = true; }
@@ -3888,7 +3900,7 @@ function pcSkip(id) {
   if (id === 'mounts') { delete state.obs.mounts; pc.mounts = null; }
   if (id === 'marks') { delete state.obs.marks; pc.marks = null; }
   if (q.line) delete state.trace[q.line];
-  if (id === 'align') Object.assign(state.photoT, { k: 1, rot: 0, dx: 0, dy: 0, flip: false });
+  if (id === 'align') { Object.assign(state.photoT, { k: 1, rot: 0, dx: 0, dy: 0, flip: false }); state.aligned = false; }
   pc.dirty = true;
 }
 pcEl('pcNext').addEventListener('click', () => {
@@ -4550,20 +4562,27 @@ function autoSkin(id, tol = 1) {
     const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
     Y[i] = .299 * r + .587 * g + .114 * b; cr[i] = 128 + .5 * r - .4187 * g - .0813 * b; cb[i] = 128 - .1687 * r - .3313 * g + .5 * b;
   }
-  const a1 = [], a2 = [], st = Math.max(1, Math.round(w / 120));
-  for (let y = Math.floor(h * .3); y < h * .72; y += st) for (let x = Math.floor(w * .28); x < w * .72; x += st) {
-    const i = y * w + x;
-    if (Y[i] > 40 && cr[i] > 128 && cr[i] < 185 && cb[i] > 70 && cb[i] < 140) { a1.push(cr[i]); a2.push(cb[i]); }
+  /* Seed the skin colour from the biggest clearly-skin region anywhere in the frame (cream walls and white
+     backgrounds sit close to skin in YCrCb, so the seed uses a stricter test: Cr >= 140). */
+  const strict = new Uint8Array(n);
+  for (let i = 0; i < n; i++) if (Y[i] > 35 && cr[i] >= 140 && cr[i] <= 185 && cb[i] >= 78 && cb[i] <= 128) strict[i] = 1;
+  const seed = autoLargest(strict, w, h);
+  const a1 = [], a2 = [], aY = [], st = Math.max(1, Math.round(Math.sqrt((seed ? seed.n : 0) / 4000)));
+  if (seed && seed.n > n * .02) { let c = 0; for (let i = 0; i < n; i++) if (seed.m[i] && (c++ % st === 0)) { a1.push(cr[i]); a2.push(cb[i]); aY.push(Y[i]); } }
+  else {
+    const st2 = Math.max(1, Math.round(w / 120));
+    for (let y = Math.floor(h * .3); y < h * .72; y += st2) for (let x = Math.floor(w * .28); x < w * .72; x += st2) {
+      const i = y * w + x;
+      if (Y[i] > 40 && cr[i] > 138 && cr[i] < 185 && cb[i] > 70 && cb[i] < 132) { a1.push(cr[i]); a2.push(cb[i]); aY.push(Y[i]); }
+    }
   }
   const med = a => { a.sort((p, q) => p - q); return a[a.length >> 1]; };
-  const aY = [];
-  for (let y = Math.floor(h * .3); y < h * .72; y += st) for (let x = Math.floor(w * .28); x < w * .72; x += st) { const i = y * w + x; if (Y[i] > 40 && cr[i] > 128 && cr[i] < 185 && cb[i] > 70 && cb[i] < 140) aY.push(Y[i]); }
   const adaptive = a1.length > 80, mcr = adaptive ? med(a1) : 150, mcb = adaptive ? med(a2) : 110, mY = aY.length ? med(aY) : 150;
   const m = new Uint8Array(n), yTol = tol < 1 ? 70 * tol : 1e9;
   for (let i = 0; i < n; i++) {
     if (Y[i] < 28) continue;
     if (adaptive) { const d1 = (cr[i] - mcr) / (16 * tol), d2 = (cb[i] - mcb) / (18 * tol), d3 = (Y[i] - mY) / yTol; if (d1 * d1 + d2 * d2 + d3 * d3 <= 1) m[i] = 1; }
-    else if (cr[i] >= 133 && cr[i] <= 180 && cb[i] >= 77 && cb[i] <= 135) m[i] = 1;
+    else if (cr[i] >= 138 && cr[i] <= 180 && cb[i] >= 77 && cb[i] <= 130) m[i] = 1;
   }
   return { m, Y, w, h };
 }
@@ -4770,6 +4789,24 @@ function autoLines(img, T, mirror, opts) {
   });
   return res;
 }
+/* How well the lined-up hand fills the outline: overlap of skin and outline over their union, plus how much of the palm is covered. */
+function autoFit(img, T, mirror, tol) {
+  const sk = autoSkin(autoRender(img, T, 1), tol || 1), w = sk.w, h = sk.h;
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d', { willReadFrequently: true });
+  x.fillStyle = '#fff';
+  const R = (rx, ry, rw, rh, rad) => { x.beginPath(); x.roundRect(mirror ? W - (rx + OX) - rw : rx + OX, ry, rw, rh, rad); x.fill(); };
+  R(72, 206, 220, 224, 46); FINGERS.forEach(([fx, fy, fw, fh]) => R(fx, fy, fw, fh, fw / 2));
+  x.save(); x.translate(mirror ? W - (100 + OX) : 100 + OX, 356); x.rotate(mirror ? .62 : -.62); x.beginPath(); x.roundRect(-26, -128, 52, 140, 26); x.fill(); x.restore();
+  const t = x.getImageData(0, 0, w, h).data;
+  let inter = 0, uni = 0, palm = 0, palmHit = 0;
+  const px0 = mirror ? W - (292 + OX) : 72 + OX;
+  for (let yy = 0; yy < Math.min(h, 440); yy++) for (let xx = 0; xx < w; xx++) {
+    const i = yy * w + xx, a = sk.m[i], b = t[i * 4] > 128;
+    if (a && b) inter++; if (a || b) uni++;
+    if (yy > 215 && yy < 420 && xx > px0 + 12 && xx < px0 + 208) { palm++; if (a) palmHit++; }
+  }
+  return { iou: uni ? inter / uni : 0, palm: palm ? palmHit / palm : 0 };
+}
 /* The whole auto-read: returns what was found, or an error the page can explain. */
 function autoReadPalm(img, mirror) {
   let A = autoAlign(img, mirror, false);
@@ -4780,7 +4817,9 @@ function autoReadPalm(img, mirror) {
   const { T, f, M } = A;
   const fs = 220 / M.Wpalm, C0 = [W / 2, H / 2], pcx = (M.xl + M.xr) / 2, tx = mirror ? W - (182 + OX) : 182 + OX;
   const Tf = { k: T.k * fs, rot: T.rot, flip: T.flip, dx: tx - C0[0] - fs * (pcx - C0[0]), dy: 206 - C0[1] - fs * (M.yb - C0[1]) };
-  const out = { T: Tf, flipped, found: [] };
+  const fit = autoFit(img, Tf, mirror, f.tol);
+  if (fit.iou < .68 || fit.palm < .8) return { error: 'align', fit };
+  const out = { T: Tf, flipped, found: [], fit };
   if (M.wristSeen && M.fingersSeen) {
     const sq = M.L / M.Wpalm < 1.12, lf = M.F / M.L > .8;
     out.shape = sq ? (lf ? 'Air' : 'Earth') : (lf ? 'Water' : 'Fire');
@@ -4792,7 +4831,7 @@ function autoReadPalm(img, mirror) {
   return out;
 }
 function applyAutoRead(res) {
-  state.photoT = res.T;
+  state.photoT = res.T; state.aligned = true;
   const set = (k, v) => { state.obs[k] = v; state.autoKeys.add(k); state.aiKeys.delete(k); };
   const names = [];
   if (res.shape) { set('shape', res.shape); names.push('hand shape'); }
@@ -4813,6 +4852,13 @@ async function runAutoRead(btn, out, then) {
   await new Promise(r => setTimeout(r, 30));
   try {
     const res = autoReadPalm(state.photo, state.mirror);
+    if (res.error === 'align') {
+      const msg = 'Auto-read couldn’t line your hand up with confidence, so it won’t guess where your lines are. Make sure your whole hand is in the photo, from fingertips to wrist, against a plain darker background. For now, line it up yourself: drag, resize and turn the photo so your palm fits the outline.';
+      out.textContent = msg; $('#photoHint').textContent = msg;
+      if (!pcEl('pc').hidden && pc.steps.includes('align')) { pc.i = pc.steps.indexOf('align'); pcRender(); }
+      else setTimeout(() => pcOpen('read', 'align'), 50);
+      return false;
+    }
     if (res.error) { out.textContent = res.error === 'background' ? 'Auto-read couldn’t separate your hand from the background, which is close to your skin colour. Retake the photo against a plain, darker background, like a dark cloth or a dark table.' : 'Auto-read couldn’t find a hand in this photo. Use a photo of your open palm, fingers up, against a plain background.'; return false; }
     const names = applyAutoRead(res);
     const msg = autoSummary(names, res.flipped);
@@ -4944,7 +4990,7 @@ async function handleFile(f) {
   state.thumb = got ? makeThumb(got.img) : null;
   state.photoSig = `${f.name || ''}:${f.size}:${got ? got.img.naturalWidth + 'x' + got.img.naturalHeight : f.type}`;
   state.autoKeys.forEach(k => { delete state.obs[k]; }); state.autoKeys = new Set();
-  state.trace = {}; state.photoT = { k: 1, rot: 0, dx: 0, dy: 0, flip: false };
+  state.trace = {}; state.photoT = { k: 1, rot: 0, dx: 0, dy: 0, flip: false }; state.aligned = false;
   state.photoQ = got ? photoQuality(got.img) : null;
   $('#photoHint').textContent = got
     ? `Using ${f.name || 'your photo'}. Press Read my palm to scan it.`
@@ -5073,7 +5119,7 @@ $('#placeUse').addEventListener('click', () => {
 /* Clear the palm photo so a different person's reading never reuses it. */
 function clearPhoto(msg) {
   state.photo = null; state.hasPhoto = false; state.photoSig = ''; state.thumb = null; state.geom = null; state.savedView = false;
-  state.obs = {}; state.trace = {}; state.aiKeys = new Set(); state.autoKeys = new Set(); state.photoT = { k: 1, rot: 0, dx: 0, dy: 0, flip: false }; pcFormUpdate();
+  state.obs = {}; state.trace = {}; state.aiKeys = new Set(); state.autoKeys = new Set(); state.photoT = { k: 1, rot: 0, dx: 0, dy: 0, flip: false }; state.aligned = false; pcFormUpdate();
   if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
   render(1); setGate();
   $('#status').textContent = 'Add a palm photo';
@@ -5141,6 +5187,7 @@ function showPalmInfo(h) {
 }
 cv.addEventListener('click', ev => {
   if (!state.hasPhoto || !state.geom || state.busy) return;
+  if (state.photo && !state.aligned) { pcOpen('read', 'align'); return; }
   const [x, y] = canonPoint(ev);
   showPalmInfo(hitPalm(x, y));
 });
