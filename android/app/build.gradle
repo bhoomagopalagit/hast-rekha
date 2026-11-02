@@ -3,6 +3,9 @@ plugins {
 }
 
 def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+// Bump android/SHELL_VERSION only when the Android code itself changes (this file, MainActivity, the manifest).
+// Web-only updates reach installed apps by themselves; a new shell version asks people to install the new APK.
+def shellVersion = file('../SHELL_VERSION').text.trim().toInteger()
 
 android {
     namespace 'com.bhoomagopala.hastrekha'
@@ -14,6 +17,12 @@ android {
         targetSdk 34
         versionCode runNumber
         versionName "1.${runNumber}"
+        buildConfigField 'int', 'WEB_VERSION', "${runNumber}"
+        buildConfigField 'int', 'SHELL_VERSION', "${shellVersion}"
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     // A fixed signing key so each new APK installs over the previous one.

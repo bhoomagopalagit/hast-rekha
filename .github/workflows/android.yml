@@ -6,6 +6,7 @@ on:
     paths:
       - 'index.html'
       - 'android/**'
+      - 'sw.js'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -36,8 +37,13 @@ jobs:
         working-directory: android
         run: gradle assembleRelease --no-daemon --stacktrace
 
-      - name: Name the APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk HastRekha.apk
+      - name: Name the APK and write the update files
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk HastRekha.apk
+          mkdir -p update
+          cp index.html update/index.html
+          printf '{"web": %s, "shell": %s}\n' "${{ github.run_number }}" "$(cat android/SHELL_VERSION | tr -d '[:space:]')" > update/version.json
+          cat update/version.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -53,5 +59,9 @@ jobs:
             Android app for the Hast Rekha Palm Reader.
             Download HastRekha.apk below, open it on your phone and tap Install.
             If Android asks, allow installs from this source (your browser or Files app).
-          files: HastRekha.apk
+            Installed apps update themselves: they download the new palm reader from this release when they open.
+          files: |
+            HastRekha.apk
+            update/index.html
+            update/version.json
           make_latest: true

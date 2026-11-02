@@ -12,7 +12,13 @@ A palm reading and Vedic astrology web app that runs in any phone or computer br
 2. Open the downloaded file and tap **Install**. If Android asks, allow installs from your browser or Files app.
 3. Open **Hast Rekha** from your home screen.
 
-The app works offline, opens your gallery or camera for the palm photo, and saves your PDF reading and share card to Downloads. A new APK is built automatically every time the app changes; install it over the old one to update.
+The app works offline, opens your gallery or camera for the palm photo, and saves your PDF reading and share card to Downloads. The app **updates itself**: every time it opens, it checks GitHub and downloads the newest palm reader, so changes pushed here reach installed phones without reinstalling. Only when the Android code itself changes does the app ask you to download and install a new APK.
+
+### For updating (maintainer notes)
+
+- Push a change to `index.html` and GitHub Actions builds a new release with `HastRekha.apk`, `index.html` and `version.json`. Installed apps pick up the new `index.html` the next time they open.
+- If you change anything under `android/` (Java code, manifest, Gradle), add 1 to the number in `android/SHELL_VERSION` so installed apps ask people to install the new APK.
+- The website updates by itself too: it always loads the newest version when online and falls back to the saved copy offline.
 
 ## What it does
 
