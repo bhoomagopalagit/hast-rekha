@@ -4,13 +4,11 @@
 
 ## What's new
 
-- **Fixed: "Something went wrong while reading (Cannot read properties of undefined)".** For some names and birth dates the reading stopped with this error, often right after Auto-read. Readings now work for every date (tested on 1,800 readings).
-
-- **The app updates itself.** Each time it opens it checks this page and downloads the newest palm reader, so you won't need to reinstall for future updates. Install this version once to get it.
-- **Lines stay on your palm.** Auto-read now checks that your hand fits the palm outline. If it doesn't, it takes you to "Line up your palm" instead of guessing.
-- **No lines on a photo that isn't lined up.** Lines appear only after the photo is lined up.
-- **Solid lines were found on your palm; dashed lines are estimates.** Trace a dashed line in "Check it myself" to place it exactly.
-- Fixed an error that could stop a reading after tracing lines.
+- **New AI Auto-read that works on real phone photos.** Google's MediaPipe finds 21 points on your hand and lines the photo up with the palm outline. Then a neural network trained on real palm photos traces your heart, head and life lines exactly where they are. Your hand shape and finger lengths are measured from the same points.
+- The first Auto-read downloads the AI (about 40 MB) and needs internet; after that it is quicker. Everything runs on your phone and your photo is not uploaded.
+- The fate line isn't read automatically: it is drawn dashed, so trace it in "Check it myself" if you can see one.
+- If the AI can't load (for example offline), the app uses its older on-device method.
+- Fixed: "Something went wrong while reading (Cannot read properties of undefined)" for some names and birth dates.
 
 ## Tips for the best reading
 

@@ -166,6 +166,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, .upload:focus-w
   color: var(--muted); text-decoration: underline; cursor: pointer;
 }
 .hint { font-size: .85rem; color: var(--muted); margin: 0; }
+.hint.small-print { font-size: .72rem; opacity: .75; margin-top: .25rem; }
 .err { color: var(--error); font-size: .9rem; margin: 0; min-height: 1.2em; }
 .primary {
   font-family: var(--display); font-size: 1.25rem; letter-spacing: .04em;
@@ -802,6 +803,7 @@ html.pc-open, html.pc-open body { overflow: hidden; }
           <div class="pcrow"><div class="pcmeter"><i id="pcFormBar" style="width:0"></i></div><span id="pcFormTxt">Not checked yet · the palm part is estimated</span></div>
           <div class="pcbtns"><button type="button" class="primary" id="autoFormBtn">&#10022; Auto-read my palm</button><button type="button" class="ghost" id="pcFormBtn">Check it myself</button></div>
           <p class="hint" id="autoFormOut" aria-live="polite"></p>
+          <p class="hint small-print">Auto-read runs on your phone with Google’s MediaPipe hand finder and the Palm Line Reader crease model by Sam Barber (MIT licence). Your photo is not uploaded.</p>
         </div>
         <div class="field">
           <span class="label">Palm photo <span class="req">(required)</span></span>
@@ -4830,6 +4832,161 @@ function autoReadPalm(img, mirror) {
   if (!out.lines.heart && !out.lines.head && !out.lines.life) out.lines = {};   /* a fate line on its own is not trustworthy */
   return out;
 }
+/* ================= AI AUTO-READ =================
+   1. Google's MediaPipe Hand Landmarker finds 21 points on the hand (wrist, knuckles, fingertips).
+   2. Those points line the photo up with the palm outline exactly.
+   3. "Palm Line Reader", a small neural network trained on real palm photos, traces the heart, head and life lines.
+   Everything runs on the device; the photo is never uploaded. Palm Line Reader is by Sam Barber (MIT licence);
+   MediaPipe is by Google (Apache 2.0 licence). If the AI can't load (offline, say), the older on-device method is used. */
+const NN = {
+  ort: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/',
+  mp: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/',
+  models: ['https://cdn.jsdelivr.net/gh/bhoomagopalagit/hast-rekha@ml-v1/ml/', 'https://bhoomagopalagit.github.io/hast-rekha/ml/'],
+  hand: 'hand_landmarker.task', lines: 'palm_lines_fp16.onnx',
+  /* where the wrist and the four knuckles sit on the palm outline (left palm, thumb on the left) */
+  TGT: [[0, 183, 446], [5, 99, 224], [9, 152, 216], [13, 205, 222], [17, 252, 236]],
+  START: { heart: [292, 262], head: [84, 284], life: [84, 284] },
+  MEAN: [0.485, 0.456, 0.406], STD: [0.229, 0.224, 0.225]
+};
+let nnReady = null;
+const nnScript = src => new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.crossOrigin = 'anonymous'; s.onload = ok; s.onerror = () => bad(new Error('script')); document.head.appendChild(s); });
+async function nnFetch(name) {
+  const bases = /github\.io$/.test(location.hostname) ? ['./ml/', ...NN.models] : NN.models;
+  let err;
+  for (const b of bases) { try { const r = await fetch(b + name); if (!r.ok) throw new Error('HTTP ' + r.status); return new Uint8Array(await r.arrayBuffer()); } catch (e) { err = e; } }
+  throw err || new Error('model');
+}
+function nnLoad() {
+  if (!nnReady) nnReady = (async () => {
+    const [vision] = await Promise.all([import(NN.mp + 'vision_bundle.mjs'), window.ort ? null : nnScript(NN.ort + 'ort.wasm.min.js')]);
+    const ort = window.ort; ort.env.wasm.wasmPaths = NN.ort; ort.env.wasm.numThreads = 1;
+    const [handBuf, lineBuf] = await Promise.all([nnFetch(NN.hand), nnFetch(NN.lines)]);
+    const files = await vision.FilesetResolver.forVisionTasks(NN.mp + 'wasm');
+    const hand = await vision.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetBuffer: handBuf, delegate: 'CPU' }, runningMode: 'IMAGE', numHands: 1, minHandDetectionConfidence: .3 });
+    const sess = await ort.InferenceSession.create(lineBuf, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+    return { hand, sess, ort };
+  })().catch(e => { nnReady = null; throw e; });
+  return nnReady;
+}
+const nnTimeout = (p, ms) => Promise.race([p, new Promise((_, bad) => setTimeout(() => bad(new Error('timeout')), ms))]);
+/* Least-squares similarity (optionally mirrored) taking points P onto Q. Returns [a, b, c, d, e, f]: x' = a x + c y + e, y' = b x + d y + f. */
+function nnSolve(P, Q, reflect) {
+  const Pr = P.map(([x, y]) => [reflect ? -x : x, y]), n = P.length;
+  const pc = [0, 1].map(i => Pr.reduce((s, p) => s + p[i], 0) / n), qc = [0, 1].map(i => Q.reduce((s, p) => s + p[i], 0) / n);
+  let a = 0, b = 0, nn = 0;
+  Pr.forEach((p, i) => { const px = p[0] - pc[0], py = p[1] - pc[1], qx = Q[i][0] - qc[0], qy = Q[i][1] - qc[1]; a += px * qx + py * qy; b += px * qy - py * qx; nn += px * px + py * py; });
+  const s = Math.hypot(a, b) / nn, th = Math.atan2(b, a), r00 = s * Math.cos(th), r01 = -s * Math.sin(th), r10 = s * Math.sin(th), r11 = s * Math.cos(th);
+  const tx = qc[0] - (r00 * pc[0] + r01 * pc[1]), ty = qc[1] - (r10 * pc[0] + r11 * pc[1]);
+  let e2 = 0; Pr.forEach((p, i) => { const x = r00 * p[0] + r01 * p[1] + tx - Q[i][0], y = r10 * p[0] + r11 * p[1] + ty - Q[i][1]; e2 += x * x + y * y; });
+  const f = reflect ? -1 : 1;
+  return { A: [r00 * f, r10 * f, r01, r11, tx, ty], rms: Math.sqrt(e2 / n), s };
+}
+const nnApply = (A, [x, y]) => [A[0] * x + A[2] * y + A[4], A[1] * x + A[3] * y + A[5]];
+/* From the hand points: the transform onto the outline, the crop the crease model expects, and the photo position for the screen. */
+function nnGeom(lm, iw, ih, mirror) {
+  const P = NN.TGT.map(([i]) => lm[i]), Q = NN.TGT.map(([, x, y]) => [x + OX, y]);
+  const f0 = nnSolve(P, Q, false), f1 = nnSolve(P, Q, true), refl = f1.rms < f0.rms, F = refl ? f1 : f0, M = F.A;
+  const cp = lm.map(p => nnApply(M, p));
+  let x0 = Math.min(...cp.map(p => p[0])), x1 = Math.max(...cp.map(p => p[0])), y0 = Math.min(...cp.map(p => p[1])), y1 = Math.max(...cp.map(p => p[1]));
+  const m = .1 * Math.max(x1 - x0, y1 - y0); x0 -= m; y0 -= m; x1 += m; y1 += m;
+  /* on screen a right palm is shown thumb on the right */
+  const D = mirror ? [-M[0], M[1], -M[2], M[3], W - M[4], M[5]] : M.slice();
+  const det = D[0] * D[3] - D[2] * D[1], flip = det < 0, s = Math.sqrt(Math.abs(det));
+  const g00 = flip ? -D[0] : D[0], g10 = flip ? -D[1] : D[1];
+  const rot = Math.atan2(g10, g00) * 180 / Math.PI, [cx, cy] = nnApply(D, [iw / 2, ih / 2]);
+  const s0 = Math.max(W / iw, H / ih);
+  const T = { k: s / s0, rot, dx: cx - W / 2, dy: cy - H / 2, flip };
+  return { M, refl, rms: F.rms, box: [x0, y0, x1, y1], cp, T, flipped: mirror === !refl };
+}
+function nnCrop(img, M, box) {
+  const [x0, y0, x1, y1] = box, sx = 512 / (x1 - x0), sy = 512 / (y1 - y0);
+  const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d', { willReadFrequently: true });
+  x.fillStyle = '#000'; x.fillRect(0, 0, 512, 512); x.imageSmoothingQuality = 'high';
+  x.setTransform(sx * M[0], sy * M[1], sx * M[2], sy * M[3], sx * (M[4] - x0), sy * (M[5] - y0));
+  x.drawImage(img, 0, 0); return c;
+}
+function nnTensor(c) {
+  const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, 512, 512).data, N = 512 * 512, t = new Float32Array(3 * N);
+  for (let i = 0, p = 0; i < N; i++, p += 4) for (let ch = 0; ch < 3; ch++) t[ch * N + i] = (d[p + ch] / 255 - NN.MEAN[ch]) / NN.STD[ch];
+  return t;
+}
+function nnArgmax(L) {
+  const N = 512 * 512, m = new Uint8Array(N);
+  for (let i = 0; i < N; i++) { let b = 0, v = L[i]; for (let c = 1; c < 4; c++) if (L[c * N + i] > v) { v = L[c * N + i]; b = c; } m[i] = b; }
+  return m;
+}
+/* One crease from the model's mask: order its pixels end to end and keep 9 points, like a traced line. */
+function nnPolyline(P, start) {
+  const n = P.length, c = [P.reduce((s, p) => s + p[0], 0) / n, P.reduce((s, p) => s + p[1], 0) / n];
+  const far = (o) => P.reduce((b, p) => (p[0] - o[0]) ** 2 + (p[1] - o[1]) ** 2 > (b[0] - o[0]) ** 2 + (b[1] - o[1]) ** 2 ? p : b, P[0]);
+  let a = far(c), b = far(a);
+  if (Math.hypot(b[0] - start[0], b[1] - start[1]) < Math.hypot(a[0] - start[0], a[1] - start[1])) [a, b] = [b, a];
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L, nb = 16;
+  const bins = Array.from({ length: nb }, () => [0, 0, 0]);
+  P.forEach(p => { const t = (p[0] - a[0]) * ux + (p[1] - a[1]) * uy; if (t < 0 || t > L) return; const k = Math.min(nb - 1, Math.floor(t / L * nb)); bins[k][0] += p[0]; bins[k][1] += p[1]; bins[k][2]++; });
+  const out = bins.filter(q => q[2] >= 2).map(q => [q[0] / q[2], q[1] / q[2]]);
+  if (out.length < 4) return null;
+  return { pts: Array.from({ length: 9 }, (_, i) => out[Math.round(i * (out.length - 1) / 8)].map(v => Math.round(v * 10) / 10)), L };
+}
+function nnKind(line, Q) {
+  const UV = Q.map(([x, y]) => [(x - 72) / 220, (y - 206) / 224]);
+  const byU = [...UV].sort((p, q) => p[0] - q[0]);
+  if (line === 'heart') { const end = byU[0], st = byU[byU.length - 1]; return end[0] > .34 ? 'saturn' : end[1] < st[1] - .06 ? 'jupiter' : 'straight'; }
+  if (line === 'head') { const st = byU[0], en = byU[byU.length - 1], span = en[0] - st[0], drop = en[1] - st[1]; return drop > .17 ? 'sloping' : span < .7 ? 'short' : 'straight'; }
+  const mid = UV.filter(p => p[1] > .3 && p[1] < .85); return Math.max(...(mid.length ? mid : UV).map(p => p[0])) > .4 ? 'wide' : 'close';
+}
+/* How deep a crease looks: how much darker the line is than the skin either side of it. */
+function nnDepth(img, M, pts) {
+  const K = 3, c = document.createElement('canvas'); c.width = W * K; c.height = H * K;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.setTransform(K * M[0], K * M[1], K * M[2], K * M[3], K * M[4], K * M[5]); x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  const g = (px, py) => { let s = 0, n = 0; const X = Math.round((px + OX) * K), Y = Math.round(py * K); for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = Math.min(c.width - 1, Math.max(0, X + dx)), yy = Math.min(c.height - 1, Math.max(0, Y + dy)), i = (yy * c.width + xx) * 4; s += .299 * d[i] + .587 * d[i + 1] + .114 * d[i + 2]; n++; } return s / n; };
+  const on = [], off = [];
+  for (let i = 0; i < pts.length - 1; i++) for (let t = 0; t < 1; t += 1 / 6) {
+    const p = [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t], dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l;
+    on.push(Math.min(...[-1.5, -.75, 0, .75, 1.5].map(o => g(p[0] + nx * o, p[1] + ny * o)))); off.push((g(p[0] + nx * 6, p[1] + ny * 6) + g(p[0] - nx * 6, p[1] - ny * 6)) / 2);
+  }
+  const med = a => { const s = [...a].sort((p, q) => p - q); return s[Math.floor(s.length / 2)]; };
+  return (med(off.map((v, i) => v - on[i]))) / Math.max(1, med(off)) * 100;
+}
+function nnLines(mask, box, img, M) {
+  const [x0, y0, x1, y1] = box, out = {};
+  [[1, 'heart'], [2, 'head'], [3, 'life']].forEach(([ci, name]) => {
+    const P = []; for (let i = 0; i < mask.length; i++) if (mask[i] === ci) { const xs = i % 512, ys = (i - xs) / 512; P.push([x0 + (xs + .5) * (x1 - x0) / 512 - OX, y0 + (ys + .5) * (y1 - y0) / 512]); }
+    if (P.length < 40) return;
+    const pl = nnPolyline(P, NN.START[name]); if (!pl || pl.L < 40) return;
+    const con = nnDepth(img, M, pl.pts);
+    out[name] = { k: nnKind(name, pl.pts), depth: con >= 15 ? 'deep' : con >= 7 ? 'clear' : 'faint', pts: pl.pts, con: Math.round(con * 10) / 10 };
+  });
+  return out;
+}
+/* Hand shape and index-versus-ring finger from the hand points (in outline units, fingers up). */
+function nnMeasure(cp) {
+  const P = cp.map(([x, y]) => [x - OX, y]), d = (i, j) => Math.hypot(P[i][0] - P[j][0], P[i][1] - P[j][1]);
+  const lw = d(0, 9) / d(5, 17), fl = d(9, 12) / d(0, 9);
+  const sq = lw < 1.5, lf = fl > .86;
+  const reachI = P[5][1] - d(5, 8), reachR = P[13][1] - d(13, 16), dd = (reachR - reachI) / 224;
+  return { shape: sq ? (lf ? 'Air' : 'Earth') : (lf ? 'Water' : 'Fire'), ir: dd > .035 ? 0 : dd < -.035 ? 1 : 2, lw, fl };
+}
+/* The whole AI read. Returns the same shape as autoReadPalm, or { error }. */
+async function nnReadPalm(img, mirror, say) {
+  say('Loading the palm-reading AI. The first time this downloads about 40 MB, so it can take a minute…');
+  const { hand, sess, ort } = await nnTimeout(nnLoad(), 120000);
+  say('Finding your hand…'); await new Promise(r => setTimeout(r, 20));
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height, sc = Math.min(1, 1280 / Math.max(iw, ih));
+  const dc = document.createElement('canvas'); dc.width = Math.round(iw * sc); dc.height = Math.round(ih * sc); dc.getContext('2d').drawImage(img, 0, 0, dc.width, dc.height);
+  const det = hand.detect(dc);
+  if (!det || !det.landmarks || !det.landmarks.length) return { error: 'nohand', ai: true };
+  const lm = det.landmarks[0].map(p => [p.x * dc.width / sc, p.y * dc.height / sc]);
+  const G = nnGeom(lm, iw, ih, mirror);
+  if (G.rms > 30) return { error: 'align', T: G.T, ai: true };
+  say('Tracing your lines…'); await new Promise(r => setTimeout(r, 20));
+  const crop = nnCrop(img, G.M, G.box);
+  const res = await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', nnTensor(crop), [1, 3, 512, 512]) });
+  const mask = nnArgmax(res[sess.outputNames[0]].data);
+  const meas = nnMeasure(G.cp);
+  return { T: G.T, flipped: G.flipped, found: [], ai: true, rms: G.rms, shape: meas.shape, ir: meas.ir, lines: nnLines(mask, G.box, img, G.M) };
+}
 function applyAutoRead(res) {
   state.photoT = res.T; state.aligned = true;
   const set = (k, v) => { state.obs[k] = v; state.autoKeys.add(k); state.aiKeys.delete(k); };
@@ -4843,17 +5000,21 @@ function applyAutoRead(res) {
   pc.dirty = true;
   return names;
 }
-const autoSummary = (names, flipped) => names.length
-  ? `Auto-read found your ${names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]}. It is an estimate from the photo, so tap Check my palm to adjust anything.${flipped ? ` Your photo looks like a ${$('#hand').value === 'right' ? 'left' : 'right'} hand (or a mirrored selfie), so it was flipped to fit. If it really is your ${$('#hand').value === 'right' ? 'left' : 'right'} hand, change Hand above and tap Auto-read again.` : ''}`
+const autoSummary = (names, flipped, ai) => names.length
+  ? `Auto-read found your ${names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]}.${ai ? ' The fate line isn’t read automatically: it’s drawn dashed, so trace it in Check it myself if you can see one.' : ''} It is an estimate from the photo, so tap Check my palm to adjust anything.${flipped ? ` Your photo looks like a ${$('#hand').value === 'right' ? 'left' : 'right'} hand (or a mirrored selfie), so it was flipped to fit. If it really is your ${$('#hand').value === 'right' ? 'left' : 'right'} hand, change Hand above and tap Auto-read again.` : ''}`
   : 'Auto-read found your hand but could not make out the lines clearly. Try a sharper photo in daylight, or check your palm by hand.';
 async function runAutoRead(btn, out, then) {
   if (!state.photo) { out.textContent = 'Add a palm photo first.'; return false; }
   btn.disabled = true; const lab = btn.textContent; btn.textContent = 'Reading your palm…'; out.textContent = 'Finding your hand and lines…';
   await new Promise(r => setTimeout(r, 30));
   try {
-    const res = autoReadPalm(state.photo, state.mirror);
+    let res = null;
+    try { res = await nnReadPalm(state.photo, state.mirror, t => { out.textContent = t; }); }
+    catch (e) { res = null; }                       /* AI unavailable (offline, blocked): use the older method */
+    if (!res) { out.textContent = 'Finding your hand and lines…'; await new Promise(r => setTimeout(r, 20)); res = autoReadPalm(state.photo, state.mirror); }
     if (res.error === 'align') {
-      const msg = 'Auto-read couldn’t line your hand up with confidence, so it won’t guess where your lines are. Make sure your whole hand is in the photo, from fingertips to wrist, against a plain darker background. For now, line it up yourself: drag, resize and turn the photo so your palm fits the outline.';
+      if (res.T && Math.abs(res.T.rot) <= 60) { state.photoT = { ...res.T }; }
+      const msg = res.ai ? 'Auto-read found your hand but isn’t sure it has lined it up correctly, often because the wrist or some fingers are outside the photo. Check the photo sits on the outline (drag, resize or turn it if needed), then tap Next.' : 'Auto-read couldn’t line your hand up with confidence, so it won’t guess where your lines are. Make sure your whole hand is in the photo, from fingertips to wrist, against a plain darker background. For now, line it up yourself: drag, resize and turn the photo so your palm fits the outline.';
       out.textContent = msg; $('#photoHint').textContent = msg;
       if (!pcEl('pc').hidden && pc.steps.includes('align')) { pc.i = pc.steps.indexOf('align'); pcRender(); }
       else setTimeout(() => pcOpen('read', 'align'), 50);
@@ -4861,7 +5022,7 @@ async function runAutoRead(btn, out, then) {
     }
     if (res.error) { out.textContent = res.error === 'background' ? 'Auto-read couldn’t separate your hand from the background, which is close to your skin colour. Retake the photo against a plain, darker background, like a dark cloth or a dark table.' : 'Auto-read couldn’t find a hand in this photo. Use a photo of your open palm, fingers up, against a plain background.'; return false; }
     const names = applyAutoRead(res);
-    const msg = autoSummary(names, res.flipped);
+    const msg = autoSummary(names, res.flipped, res.ai);
     out.textContent = msg; $('#photoHint').textContent = msg;
     if (then) then();
     return true;

@@ -21,9 +21,13 @@ The app works offline, opens your gallery or camera for the palm photo, and save
 - Each release's "What's new" text comes from `RELEASE_NOTES.md`; edit it alongside a change before pushing.
 - The website updates by itself too: it always loads the newest version when online and falls back to the saved copy offline.
 
+## Credits
+
+Auto-read uses Google's [MediaPipe](https://github.com/google-ai-edge/mediapipe) Hand Landmarker (Apache 2.0) and the Palm Line Reader crease model by Sam Barber ([samuelwbarber/palm-line-reader](https://github.com/samuelwbarber/palm-line-reader), MIT). See `ml/README.md`.
+
 ## What it does
 
-- **Auto-read (one tap):** the app finds your hand in the photo, lines it up, and reads your hand shape and your heart, head, life and fate lines on your phone, then shows your reading.
+- **Auto-read (one tap, AI):** MediaPipe finds your hand and lines the photo up, then a neural network traces your heart, head and life lines; hand shape and finger lengths come from the hand points. It all runs on your phone.
 - **Palm check (most exact):** line up your palm photo, trace your lines and match what you see to simple pictures, so the reading follows your real hand.
 - **Detailed palm reading:** heart, head, life and fate lines, minor lines, mounts, fingers, fingerprints (shankh and chakra), special signs, both-hands comparison and a full "palm in depth" write-up.
 - **Vedic birth chart:** Moon rashi, nakshatra, Lagna, North and South Indian charts, navamsa, Vimshottari dasha, Mangal dosha and Sade Sati, calculated from real planet positions (Lahiri ayanamsa).
